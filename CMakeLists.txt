@@ -12,10 +12,24 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
+add_library(dpp SHARED IMPORTED)
+set_target_properties(dpp PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../libdpp-10.1.4-win64-debug-vs2022/bin/dpp.dll"
+    IMPORTED_IMPLIB   "${CMAKE_SOURCE_DIR}/../libdpp-10.1.4-win64-debug-vs2022/lib/dpp-10.1/dpp.lib"
+)
+
+target_include_directories(dpp INTERFACE
+    "${CMAKE_SOURCE_DIR}/../libdpp-10.1.4-win64-debug-vs2022/include/dpp-10.1"
+)
+
 add_executable(discord_bot
   main.cpp
+  token.json
+  TokenReader.h
+  TokenReader.cpp
 )
-target_link_libraries(discord_bot Qt${QT_VERSION_MAJOR}::Core)
+
+target_link_libraries(discord_bot Qt${QT_VERSION_MAJOR}::Core dpp)
 
 include(GNUInstallDirs)
 install(TARGETS discord_bot
