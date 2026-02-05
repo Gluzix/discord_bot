@@ -27,11 +27,19 @@ add_executable(discord_bot
   token.json
   TokenReader.h
   TokenReader.cpp
-  CommandHandler.h CommandHandler.cpp
-  CtrlMainServer.h CtrlMainServer.cpp
-  ICommand.h ICommand.cpp
-  PingCommand.h PingCommand.cpp
+  CtrlMainServer.h
+  CtrlMainServer.cpp
+  Commands/ICommand.h
+  Commands/ICommand.cpp
+  Commands/Command.h
+  Commands/Command.cpp
+  Commands/JoinCommand.h
+  Commands/JoinCommand.cpp
+  Commands/CommandHandler.h
+  Commands/CommandHandler.cpp
 )
+
+target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
 
 target_link_libraries(discord_bot Qt${QT_VERSION_MAJOR}::Core dpp)
 
