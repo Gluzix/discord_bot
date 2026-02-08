@@ -5,7 +5,7 @@
 JoinCommand::JoinCommand(std::string name)
     : Command(name)
 {
-
+    reply = "I will join your channel";
 }
 
 JoinCommand::~JoinCommand()

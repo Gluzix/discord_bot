@@ -37,6 +37,7 @@ add_executable(discord_bot
   Commands/JoinCommand.cpp
   Commands/CommandHandler.h
   Commands/CommandHandler.cpp
+  Commands/LeaveCommand.h Commands/LeaveCommand.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
