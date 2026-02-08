@@ -2,8 +2,6 @@
 
 #include "ICommand.h"
 
-#include <dpp/dpp.h>
-
 #include <utility>
 #include <string>
 
@@ -20,7 +18,7 @@ public:
 
     void setReply(const std::string &reply_);
 
-    void execute() override;
+    void execute(const dpp::slashcommand_t& event) override;
     void prepare() override;
     std::string name() override;
     std::string getReply() override;

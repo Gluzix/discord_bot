@@ -1,5 +1,7 @@
 #include "JoinCommand.h"
 
+#include <dpp/dpp.h>
+
 JoinCommand::JoinCommand(std::string name)
     : Command(name)
 {
@@ -11,7 +13,7 @@ JoinCommand::~JoinCommand()
 
 }
 
-void JoinCommand::execute()
+void JoinCommand::execute(const dpp::slashcommand_t &event)
 {
     dpp::guild* g = dpp::find_guild(event.command.guild_id);
     auto current_vc = event.from()->get_voice(event.command.guild_id);

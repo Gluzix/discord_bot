@@ -1,5 +1,7 @@
 #include "Command.h"
 
+#include <dpp/dpp.h>
+
 Command::Command(std::string name_, std::string defaultReply_)
     : cmdName(name_)
     , reply(defaultReply_)
@@ -17,9 +19,9 @@ Command::~Command()
 
 }
 
-void Command::execute()
+void Command::execute(const dpp::slashcommand_t &event)
 {
-
+    event.reply(getReply());
 }
 
 void Command::prepare()

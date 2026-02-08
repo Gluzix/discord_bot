@@ -8,7 +8,7 @@ public:
     JoinCommand(std::string name);
     ~JoinCommand();
 
-    void execute() override;
+    void execute(const dpp::slashcommand_t& event) override;
     std::string name() override;
     std::string getReply() override;
 };
