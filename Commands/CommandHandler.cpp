@@ -2,6 +2,7 @@
 #include "Command.h"
 #include "JoinCommand.h"
 #include "LeaveCommand.h"
+#include "StartTimerCommand.h"
 #include <QDebug>
 
 CommandHandler::CommandHandler()
@@ -20,6 +21,8 @@ void CommandHandler::prepare()
     commands.push_back(std::make_unique<Command>("stop", "stop playing music"));
     commands.push_back(std::make_unique<JoinCommand>("join"));
     commands.push_back(std::make_unique<LeaveCommand>("leave"));
+    commands.push_back(std::make_unique<StartTimerCommand>("start_timer", "started timer...", bot));
+    commands.push_back(std::make_unique<StartTimerCommand>("stop_timer", "stopped timer...", bot));
 
     if (bot) {
         bot->on_slashcommand([this](const dpp::slashcommand_t& event) {
