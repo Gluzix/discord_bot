@@ -12,6 +12,19 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
 {
     JoinCommand::execute(event);
 
+    // ADD WAIT HERE TO ENSURE THAT THE BOT IS ALREADY IN THE VOICE CHANNEL, BEFORE STARTING STREAMING DATA
+
+    uint8_t* robot = nullptr;
+    size_t robot_size = 0;
+    std::ifstream input ("C:/workspace/discord_bot/i-apologize.raw", std::ios::in|std::ios::binary|std::ios::ate);
+    if (input.is_open()) {
+        robot_size = input.tellg();
+        robot = new uint8_t[robot_size];
+        input.seekg (0, std::ios::beg);
+        input.read ((char*)robot, robot_size);
+        input.close();
+    }
+
     /* Get the voice channel the bot is in, in this current guild. */
     dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
 
@@ -22,7 +35,7 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
     }
 
     /* Tell the bot to play the sound file 'Robot.pcm' in the current voice channel. */
-    // v->voiceclient->send_audio_raw((uint16_t*)robot, robot_size);  SEND HERE AN ACTUAL AUDIO
+    currentVoiceChannel->voiceclient->send_audio_raw((uint16_t*)robot, robot_size);  //  SEND HERE AN ACTUAL AUDIO
 
     event.reply("Played music.");
 }
