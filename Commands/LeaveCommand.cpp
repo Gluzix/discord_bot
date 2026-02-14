@@ -10,19 +10,19 @@ LeaveCommand::LeaveCommand(std::string name)
 
 void LeaveCommand::execute(const dpp::slashcommand_t &event)
 {
-    dpp::guild* g = dpp::find_guild(event.command.guild_id);
-    auto current_vc = event.from()->get_voice(event.command.guild_id);
+    dpp::guild* guild = dpp::find_guild(event.command.guild_id);
+    dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
 
     /* The user issuing the command is not on any voice channel, we can't do anything */
-    if (!g->connect_member_voice(*event.owner, event.command.get_issuing_user().id)) {
+    if (!guild->connect_member_voice(*event.owner, event.command.get_issuing_user().id)) {
         event.reply("Cannot leave, I'm not on the same channel as you!");
         return;
     }
 
-    if (current_vc) {
-        auto users_vc = g->voice_members.find(event.command.get_issuing_user().id);
+    if (currentVoiceChannel) {
+        auto usersVcIterator = guild->voice_members.find(event.command.get_issuing_user().id);
 
-        if (users_vc != g->voice_members.end() && current_vc->channel_id == users_vc->second.channel_id) {
+        if (usersVcIterator != guild->voice_members.end() && currentVoiceChannel->channel_id == usersVcIterator->second.channel_id) {
 
             // attempt to leave channel
             event.from()->disconnect_voice(event.command.guild_id);

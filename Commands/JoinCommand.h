@@ -5,7 +5,7 @@
 class JoinCommand : public Command
 {
 public:
-    JoinCommand(std::string name);
+    JoinCommand(std::string name, std::string reply);
     ~JoinCommand();
 
     void execute(const dpp::slashcommand_t& event) override;

@@ -3,6 +3,7 @@
 #include "JoinCommand.h"
 #include "LeaveCommand.h"
 #include "StartTimerCommand.h"
+#include "PlayCommand.h"
 #include <QDebug>
 
 CommandHandler::CommandHandler()
@@ -17,18 +18,18 @@ void CommandHandler::setBot(std::shared_ptr<dpp::cluster> bot_)
 void CommandHandler::prepare()
 {
     commands.push_back(std::make_unique<Command>("ping", "ping test"));
-    commands.push_back(std::make_unique<Command>("play", "play music"));
     commands.push_back(std::make_unique<Command>("stop", "stop playing music"));
-    commands.push_back(std::make_unique<JoinCommand>("join"));
+    commands.push_back(std::make_unique<JoinCommand>("join", "joins channel where the user's in"));
     commands.push_back(std::make_unique<LeaveCommand>("leave"));
-    commands.push_back(std::make_unique<StartTimerCommand>("start_timer", "started timer...", bot));
-    commands.push_back(std::make_unique<StartTimerCommand>("stop_timer", "stopped timer...", bot));
+    commands.push_back(std::make_unique<StartTimerCommand>("start_timer", "started timer...", bot, userTimers));
+    commands.push_back(std::make_unique<StartTimerCommand>("stop_timer", "stopped timer...", bot, userTimers));
+    commands.push_back(std::make_unique<PlayCommand>("play", "play chosen song, provide with the name"));
 
     if (bot) {
         bot->on_slashcommand([this](const dpp::slashcommand_t& event) {
             for (const auto &cmd: commands)
             {
-                if (event.command.get_command_name()== cmd->name())
+                if (event.command.get_command_name() == cmd->name())
                 {
                     cmd->execute(event);
                 }

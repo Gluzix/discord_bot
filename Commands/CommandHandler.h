@@ -12,5 +12,8 @@ public:
 
 private:
     std::shared_ptr<dpp::cluster> bot;
-    std::vector<std::unique_ptr<ICommand>> commands;
+    std::vector<std::unique_ptr<ICommand>> commands{};
+
+    // Timers
+    std::map<dpp::snowflake, dpp::timer> userTimers{};
 };

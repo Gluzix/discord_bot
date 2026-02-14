@@ -39,6 +39,9 @@ add_executable(discord_bot
   Commands/CommandHandler.cpp
   Commands/LeaveCommand.h Commands/LeaveCommand.cpp
   Commands/StartTimerCommand.h Commands/StartTimerCommand.cpp
+  Commands/PlayCommand.h Commands/PlayCommand.cpp
+  Encoders/Mp3Encoder.h Encoders/Mp3Encoder.cpp
+  Commands/StopTimerCommand.h Commands/StopTimerCommand.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
