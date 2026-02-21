@@ -17,7 +17,7 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
 
     uint8_t* robot = nullptr;
     size_t robot_size = 0;
-    std::ifstream input ("C:/workspace/discord_bot/i-apologize.raw", std::ios::in|std::ios::binary|std::ios::ate);
+    std::ifstream input ("C:/workspace/discord_bot/output.pcm", std::ios::in|std::ios::binary|std::ios::ate);
     if (input.is_open()) {
         robot_size = input.tellg();
         robot = new uint8_t[robot_size];

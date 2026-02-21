@@ -1,13 +1,12 @@
 #include "Mp3Encoder.h"
 #include <QDebug>
-#include <stdint.h>
 
 extern "C" {
-#include <libavutil/frame.h>
-#include <libavutil/mem.h>
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libswresample/swresample.h>
+    #include <libavutil/frame.h>
+    #include <libavutil/mem.h>
+    #include <libavcodec/avcodec.h>
+    #include <libavformat/avformat.h>
+    #include <libswresample/swresample.h>
 }
 
 Mp3Encoder::Mp3Encoder() {}
@@ -16,7 +15,7 @@ void Mp3Encoder::openFile()
 {
 }
 
-void Mp3Encoder::encodeToPCM()
+void Mp3Encoder::PcmResample()
 {
     AVFormatContext *format = nullptr;
     int errorCode = avformat_open_input(&format, "C:/workspace/discord_bot/wash-it-all-away.mp3", nullptr, nullptr);
@@ -53,4 +52,74 @@ void Mp3Encoder::encodeToPCM()
                         0, nullptr);
 
     swr_init(swr);
+
+    AVPacket *packet = av_packet_alloc();
+    AVFrame *frame = av_frame_alloc();
+
+    while(av_read_frame(format, packet) >= 0) {
+
+        if(packet->stream_index != audioStream) {
+            av_packet_unref(packet);
+            continue;
+        }
+
+        if (avcodec_send_packet(codec_ctx, packet) < 0) {
+            av_packet_unref(packet);
+            continue;
+        }
+
+        while (avcodec_receive_frame(codec_ctx, frame) >= 0) {
+            int out_samples = swr_get_out_samples(swr, frame->nb_samples);
+
+            uint8_t *out_buf = nullptr;
+            int out_buf_size = av_samples_get_buffer_size(nullptr, 2, out_samples, AV_SAMPLE_FMT_S16, 1);
+
+            out_buf = (uint8_t*)av_malloc(out_buf_size);
+
+            int samples_converted = swr_convert(
+                swr,
+                &out_buf,
+                out_samples,
+                (const uint8_t**)frame->data,
+                frame->nb_samples
+            );
+
+            if (samples_converted > 0) {
+                int actual_size = av_samples_get_buffer_size(
+                    nullptr, 2, samples_converted, AV_SAMPLE_FMT_S16,1
+                );
+
+                pcmData.insert(pcmData.end(), out_buf, out_buf + actual_size);
+            }
+
+            av_free(out_buf);
+            av_frame_unref(frame);
+        }
+
+        av_packet_unref(packet);
+    }
+
+    uint8_t *out_buf = nullptr;
+    int remaining = swr_get_out_samples(swr, 0);
+    if (remaining > 0) {
+        int out_buf_size = av_samples_get_buffer_size(nullptr, 2, remaining, AV_SAMPLE_FMT_S16, 1);
+        out_buf = (uint8_t*)av_malloc(out_buf_size);
+
+        int flushed = swr_convert(swr, &out_buf, remaining, nullptr, 0);
+        if (flushed >0) {
+            int actual_size = av_samples_get_buffer_size(
+                nullptr, 2, flushed, AV_SAMPLE_FMT_S16, 1
+            );
+            pcmData.insert(pcmData.end(), out_buf, out_buf + actual_size);
+        }
+        av_free(out_buf);
+    }
+
+}
+
+void Mp3Encoder::saveFileAsPcm()
+{
+    FILE *f = fopen("output.pcm", "wb");
+    fwrite(pcmData.data(), 1, pcmData.size(), f);
+    fclose(f);
 }
