@@ -46,9 +46,12 @@ add_executable(discord_bot
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
+target_include_directories(discord_bot PRIVATE
+    ${FFMPEG_INCLUDE_DIRS}
+    "C:/vcpkg/installed/x64-windows/include"
+)
 
 target_link_libraries(discord_bot Qt${QT_VERSION_MAJOR}::Core dpp)
-
 target_link_libraries(discord_bot
     FFmpeg::avcodec
     FFmpeg::avformat
