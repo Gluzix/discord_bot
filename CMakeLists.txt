@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
+find_package(FFmpeg REQUIRED)
 
 add_library(dpp SHARED IMPORTED)
 set_target_properties(dpp PROPERTIES
@@ -24,7 +25,7 @@ target_include_directories(dpp INTERFACE
 
 add_executable(discord_bot
   main.cpp
-  token.json
+  # token.json
   TokenReader.h
   TokenReader.cpp
   CtrlMainServer.h
@@ -47,6 +48,13 @@ add_executable(discord_bot
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
 
 target_link_libraries(discord_bot Qt${QT_VERSION_MAJOR}::Core dpp)
+
+target_link_libraries(discord_bot
+    FFmpeg::avcodec
+    FFmpeg::avformat
+    FFmpeg::avutil
+    swresample
+)
 
 include(GNUInstallDirs)
 install(TARGETS discord_bot
