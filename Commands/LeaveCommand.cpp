@@ -24,16 +24,20 @@ void LeaveCommand::execute(const dpp::slashcommand_t &event)
 
         if (usersVcIterator != guild->voice_members.end() && currentVoiceChannel->channel_id == usersVcIterator->second.channel_id) {
 
-            // Check if bot plays an audio, if yes, stop it before leaving
-            if (currentVoiceChannel->voiceclient->is_playing())
-            {
+            if (currentVoiceChannel->voiceclient->is_playing()) {
+                stopPlayingFunc();
                 currentVoiceChannel->voiceclient->stop_audio();
-                event.reply("Stopping playing. Please ask me to leave once again");
-            } else {
-                // attempt to leave channel
+            }
+
+            // Check if bot plays an audio, if yes, stop it before leaving
+            auto async = std::async([currentVoiceChannel, event]() {
+                while(currentVoiceChannel->voiceclient->is_playing()) {
+                    Sleep(500);
+                }
                 event.from()->disconnect_voice(event.command.guild_id);
                 event.reply("Okay, i'm leaving :(");
-            }
+            });
+            async.wait();
         }
     } else {
         event.reply("Cannot leave, I'm not on the same channel as you!");
@@ -48,4 +52,9 @@ std::string LeaveCommand::name()
 std::string LeaveCommand::getReply()
 {
     return reply;
+}
+
+void LeaveCommand::setStopPlayingFunction(const std::function<void ()> &func)
+{
+    stopPlayingFunc = func;
 }

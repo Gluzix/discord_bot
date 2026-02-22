@@ -20,10 +20,22 @@ void CommandHandler::prepare()
     commands.push_back(std::make_unique<Command>("ping", "ping test"));
     commands.push_back(std::make_unique<Command>("stop", "stop playing music"));
     commands.push_back(std::make_unique<JoinCommand>("join", "joins channel where the user's in"));
-    commands.push_back(std::make_unique<LeaveCommand>("leave"));
+
+    // NEED TO RETHINK WHOLE ARCHITECTURE HERE...
+    std::unique_ptr<ICommand> playCommand = std::make_unique<PlayCommand>("play", "play chosen song, provide with the name");
+    std::unique_ptr<ICommand> leaveCommand = std::make_unique<LeaveCommand>("leave");
+
+    dynamic_cast<LeaveCommand*>(leaveCommand.get())->setStopPlayingFunction([&playCommand](){
+        auto playCommandPtr = dynamic_cast<PlayCommand*>(playCommand.get());
+        if (playCommandPtr)
+            playCommandPtr->stopSendingData();
+    });
+
+    commands.push_back(std::move(playCommand));
+    commands.push_back(std::move(leaveCommand));
+
     commands.push_back(std::make_unique<StartTimerCommand>("start_timer", "started timer...", bot, userTimers));
     commands.push_back(std::make_unique<StartTimerCommand>("stop_timer", "stopped timer...", bot, userTimers));
-    commands.push_back(std::make_unique<PlayCommand>("play", "play chosen song, provide with the name"));
 
     if (bot) {
         bot->on_slashcommand([this](const dpp::slashcommand_t& event) {

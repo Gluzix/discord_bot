@@ -10,6 +10,5 @@ public:
     void PcmResample();
     void saveFileAsPcm();
 
-private:
     std::vector<uint8_t> pcmData{};
 };

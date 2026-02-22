@@ -17,6 +17,8 @@ void Mp3Encoder::openFile()
 
 void Mp3Encoder::PcmResample()
 {
+    pcmData.clear();
+
     AVFormatContext *format = nullptr;
     int errorCode = avformat_open_input(&format, "C:/workspace/discord_bot/wash-it-all-away.mp3", nullptr, nullptr);
 
@@ -114,7 +116,6 @@ void Mp3Encoder::PcmResample()
         }
         av_free(out_buf);
     }
-
 }
 
 void Mp3Encoder::saveFileAsPcm()

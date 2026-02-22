@@ -13,19 +13,6 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
     JoinCommand::execute(event);
     Sleep(3000);
 
-    // ADD WAIT HERE TO ENSURE THAT THE BOT IS ALREADY IN THE VOICE CHANNEL, BEFORE STARTING STREAMING DATA
-
-    uint8_t* robot = nullptr;
-    size_t robot_size = 0;
-    std::ifstream input ("C:/workspace/discord_bot/output.pcm", std::ios::in|std::ios::binary|std::ios::ate);
-    if (input.is_open()) {
-        robot_size = input.tellg();
-        robot = new uint8_t[robot_size];
-        input.seekg (0, std::ios::beg);
-        input.read ((char*)robot, robot_size);
-        input.close();
-    }
-
     /* Get the voice channel the bot is in, in this current guild. */
     dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
 
@@ -35,12 +22,13 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
         return;
     }
 
-    if (event.command.get_command_name() == "play") {
+    encoder.openFile();
+    encoder.PcmResample();
 
-    /* Tell the bot to play the sound file 'Robot.pcm' in the current voice channel. */
-    currentVoiceChannel->voiceclient->send_audio_raw((uint16_t*)robot, robot_size);  //  SEND HERE AN ACTUAL AUDIO
+    audioThread = std::thread(&PlayCommand::streamAudio, this, currentVoiceChannel, std::ref(encoder.pcmData));
+    audioThread.detach();
 
-    }
+    // Stream audio in a separate thread
 
     event.reply("Played music.");
 }
@@ -53,4 +41,33 @@ std::string PlayCommand::name()
 std::string PlayCommand::getReply()
 {
     return reply;
+}
+
+void PlayCommand::stopSendingData()
+{
+    isPlaying = false;
+}
+
+void PlayCommand::streamAudio(dpp::voiceconn *vc, const std::vector<uint8_t> &pcmData)
+{
+    const int CHUNK_SIZE = 384000; // 2s of data
+    size_t offset = 0;
+
+    isPlaying = true;
+
+    while (isPlaying && offset + CHUNK_SIZE <= pcmData.size()) {
+        vc->voiceclient->send_audio_raw(
+            (uint16_t*)(pcmData.data() + offset),
+            CHUNK_SIZE
+        );
+        offset += CHUNK_SIZE;
+    }
+
+    // Send a brief silence to cleanly stop instead of cutting off abruptly
+    if (!isPlaying) {
+        std::vector<uint8_t> silence(CHUNK_SIZE, 0);
+        vc->voiceclient->send_audio_raw((uint16_t*)silence.data(), CHUNK_SIZE);
+    }
+
+    isPlaying = false;
 }
