@@ -5,6 +5,8 @@
 
 #include <atomic>
 #include <thread>
+#include <queue>
+#include <mutex>
 
 namespace dpp {
 class voiceconn;
@@ -22,8 +24,18 @@ public:
 
 private:
     Mp3Encoder encoder;
-    void streamAudio(dpp::voiceconn* vc, const std::vector<uint8_t>& pcmData);
+    void streamAudio(dpp::voiceconn* vc);
+    void pcmResample();
 
     std::atomic<bool> isPlaying{false};
+
     std::thread audioThread;
+    std::thread resamplingThread;
+
+
+    std::vector<uint8_t> pcmData{};
+    std::queue<std::vector<uint8_t>> audioQueue;
+    std::mutex queueMutex;
+    std::condition_variable queueCv;
+    bool decodingFinished = false;
 };

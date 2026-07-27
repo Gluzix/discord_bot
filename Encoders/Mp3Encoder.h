@@ -7,8 +7,7 @@ class Mp3Encoder
 public:
     Mp3Encoder();
     void openFile();
-    void PcmResample();
-    void saveFileAsPcm();
+    // void PcmResample();
+    // void saveFileAsPcm();
 
-    std::vector<uint8_t> pcmData{};
 };

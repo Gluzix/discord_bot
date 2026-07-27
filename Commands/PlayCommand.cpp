@@ -1,6 +1,16 @@
 #include "PlayCommand.h"
 
 #include <dpp/dpp.h>
+#include <QDebug>
+
+extern "C" {
+#include <libavutil/frame.h>
+#include <libavutil/mem.h>
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libswresample/swresample.h>
+}
+
 
 PlayCommand::PlayCommand(std::string name, std::string reply)
     : JoinCommand(name, reply)
@@ -22,14 +32,15 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
         return;
     }
 
-    encoder.openFile();
-    encoder.PcmResample();
+    // encoder.openFile();
 
-    audioThread = std::thread(&PlayCommand::streamAudio, this, currentVoiceChannel, std::ref(encoder.pcmData));
+    resamplingThread = std::thread(&PlayCommand::pcmResample, this);
+    resamplingThread.detach();
+
+    audioThread = std::thread(&PlayCommand::streamAudio, this, currentVoiceChannel);
     audioThread.detach();
 
     // Stream audio in a separate thread
-
     event.reply("Played music.");
 }
 
@@ -48,19 +59,47 @@ void PlayCommand::stopSendingData()
     isPlaying = false;
 }
 
-void PlayCommand::streamAudio(dpp::voiceconn *vc, const std::vector<uint8_t> &pcmData)
+std::vector<uint8_t> accumulator;
+
+void PlayCommand::streamAudio(dpp::voiceconn *vc)
 {
     const int CHUNK_SIZE = 384000; // 2s of data
-    size_t offset = 0;
-
+    const int FOUR_BYTE_ALIGNMENT = 4;
+    size_t readOffset = 0;
     isPlaying = true;
 
-    while (isPlaying && offset + CHUNK_SIZE <= pcmData.size()) {
-        vc->voiceclient->send_audio_raw(
-            (uint16_t*)(pcmData.data() + offset),
-            CHUNK_SIZE
-        );
-        offset += CHUNK_SIZE;
+    while (isPlaying) {
+        std::vector<uint8_t> chunk;
+        {
+            std::unique_lock<std::mutex> lock(queueMutex);
+            queueCv.wait(lock, [this] { return !audioQueue.empty() || decodingFinished; });
+            if (audioQueue.empty() && decodingFinished && accumulator.size() < CHUNK_SIZE) break;
+
+            if (!audioQueue.empty()) {
+                chunk = std::move(audioQueue.front());
+                audioQueue.pop();
+            }
+        }
+
+        accumulator.insert(accumulator.end(), chunk.begin(), chunk.end());
+
+        while (accumulator.size() - readOffset >= CHUNK_SIZE) {
+            vc->voiceclient->send_audio_raw((uint16_t*)(accumulator.data() + readOffset), CHUNK_SIZE);
+            readOffset += CHUNK_SIZE;
+        }
+
+        if (readOffset > CHUNK_SIZE * 4) {
+            accumulator.erase(accumulator.begin(), accumulator.begin() + readOffset);
+            readOffset = 0;
+        }
+    }
+
+    size_t remaining = accumulator.size() - readOffset;
+    if (remaining > 0) {
+        size_t alignedSize = remaining - (remaining % FOUR_BYTE_ALIGNMENT);
+        if (alignedSize > 0) {
+            vc->voiceclient->send_audio_raw((uint16_t*)(accumulator.data() + readOffset), alignedSize);
+        }
     }
 
     // Send a brief silence to cleanly stop instead of cutting off abruptly
@@ -70,4 +109,129 @@ void PlayCommand::streamAudio(dpp::voiceconn *vc, const std::vector<uint8_t> &pc
     }
 
     isPlaying = false;
+}
+
+void PlayCommand::pcmResample()
+{
+    pcmData.clear();
+
+    AVDictionary *options = nullptr;
+    av_dict_set(&options, "headers",
+                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n",
+                0);
+    AVFormatContext *format = nullptr;
+    int errorCode = avformat_open_input(&format, "https://rr2---sn-cxn3pqhxqp5-3g3l.googlevideo.com/videoplayback?expire=1785189077&ei=dX5natGyBpyDi9oPqJuCiQs&ip=109.95.112.195&id=o-AJqLQaIirpnbmeQtGP7nBJnrHmQGm-c7kTIuHa3PK04c&itag=251&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=346&met=1785167477%2C&mh=Fp&mm=31%2C29&mn=sn-cxn3pqhxqp5-3g3l%2Csn-ajf5f5-53&ms=au%2Crdu&mv=m&mvi=2&pl=21&rms=au%2Cau&initcwndbps=3461250&bui=AZFlqhPGErrfcIZPrRMC2A0AS1fHSjyJ3E6zYTnypIpJuoJ1rUrYFfh9sX2NdUUIEOMcjvluE9vUHXYz&spc=SQ-umomT4lZursjvHjKPC4BirYJKE_V2yVQXvSa11C9Y&vprv=1&svpuc=1&mime=audio%2Fwebm&rqh=1&gir=yes&clen=657730947&dur=36032.681&lmt=1735685201837101&mt=1785167108&fvip=4&keepalive=yes&fexp=51565116%2C51992867&c=ANDROID_VR&txp=5432434&sparams=expire%2Cei%2Cip%2Cid%2Citag%2Csource%2Crequiressl%2Cxpc%2Cbui%2Cspc%2Cvprv%2Csvpuc%2Cmime%2Crqh%2Cgir%2Cclen%2Cdur%2Clmt&sig=AE0s2JYwRgIhAMNywDaCWWsQq6DENFECDgwZnrE2BrTW6IKv83SKK3KtAiEAxG7pF7ZdJAT7h-NPRpvaSD9Hcj-phZXGY2UKJDhf4Ck%3D&lsparams=cps%2Cmet%2Cmh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Crms%2Cinitcwndbps&lsig=APaTxxMwRQIhAJ2INcqxgP2UTrXXTz0b_WYZsmhkKE-HdmIHfCeNJmCJAiBEIy27qWmheqMfJ0bJbBOxAQzCG407OL0iTNlpQ-UdCw%3D%3D", nullptr, &options);
+
+    if (errorCode < 0) {
+        char errbuf[256];
+        av_strerror(errorCode, errbuf, sizeof(errbuf));
+        std::cerr << "avformat_open_input failed: " << errbuf << " (code: " << errorCode << ")\n";
+    }
+
+    if (errorCode != 0) {
+        qDebug() << "Cannot open file! avformat_open_input returned with " << errorCode;
+    }
+    errorCode = avformat_find_stream_info(format, nullptr);
+    if (errorCode != 0) {
+        qDebug() << "Cannot find stream info! avformat_find_stream_info returned with " << errorCode;
+    }
+
+    int audioStream = av_find_best_stream(format, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (audioStream < 0) {
+        qDebug() << "Couldn't find audio stream! av_find_best_stream returned with " << audioStream;
+    }
+
+    const AVCodec *codec = avcodec_find_decoder(format->streams[audioStream]->codecpar->codec_id);
+    AVCodecContext* codec_ctx = avcodec_alloc_context3(codec);
+
+    avcodec_parameters_to_context(codec_ctx, format->streams[audioStream]->codecpar);
+    avcodec_open2(codec_ctx, codec, nullptr);
+
+    SwrContext* swr = nullptr;
+    AVChannelLayout out_ch_layout = AV_CHANNEL_LAYOUT_STEREO;
+    AVChannelLayout in_ch_layout = codec_ctx->ch_layout;
+
+    swr_alloc_set_opts2(&swr, &out_ch_layout,
+                        AV_SAMPLE_FMT_S16,
+                        48000,
+                        &in_ch_layout,
+                        codec_ctx->sample_fmt,
+                        codec_ctx->sample_rate,
+                        0, nullptr);
+
+    swr_init(swr);
+
+    AVPacket *packet = av_packet_alloc();
+    AVFrame *frame = av_frame_alloc();
+
+    while(av_read_frame(format, packet) >= 0) {
+
+        if(packet->stream_index != audioStream) {
+            av_packet_unref(packet);
+            continue;
+        }
+
+        if (avcodec_send_packet(codec_ctx, packet) < 0) {
+            av_packet_unref(packet);
+            continue;
+        }
+
+        while (avcodec_receive_frame(codec_ctx, frame) >= 0) {
+            int out_samples = swr_get_out_samples(swr, frame->nb_samples);
+
+            uint8_t *out_buf = nullptr;
+            int out_buf_size = av_samples_get_buffer_size(nullptr, 2, out_samples, AV_SAMPLE_FMT_S16, 1);
+
+            out_buf = (uint8_t*)av_malloc(out_buf_size);
+
+            int samples_converted = swr_convert(
+                swr,
+                &out_buf,
+                out_samples,
+                (const uint8_t**)frame->data,
+                frame->nb_samples
+                );
+
+            if (samples_converted > 0) {
+                int actual_size = av_samples_get_buffer_size(nullptr, 2, samples_converted, AV_SAMPLE_FMT_S16,1);
+
+                std::vector<uint8_t> chunk(out_buf, out_buf + actual_size);
+                {
+                    std::lock_guard<std::mutex> lock(queueMutex);
+                    audioQueue.push(std::move(chunk));
+                }
+                queueCv.notify_one();
+            }
+            av_free(out_buf);
+            av_frame_unref(frame);
+        }
+
+        av_packet_unref(packet);
+    }
+
+    uint8_t *out_buf = nullptr;
+    int remaining = swr_get_out_samples(swr, 0);
+    if (remaining > 0) {
+        int out_buf_size = av_samples_get_buffer_size(nullptr, 2, remaining, AV_SAMPLE_FMT_S16, 1);
+        out_buf = (uint8_t*)av_malloc(out_buf_size);
+
+        int flushed = swr_convert(swr, &out_buf, remaining, nullptr, 0);
+        if (flushed >0) {
+            int actual_size = av_samples_get_buffer_size(nullptr, 2, flushed, AV_SAMPLE_FMT_S16, 1);
+
+            std::vector<uint8_t> chunk(out_buf, out_buf + actual_size);
+            {
+                std::lock_guard<std::mutex> lock(queueMutex);
+                audioQueue.push(std::move(chunk));
+            }
+            queueCv.notify_one();
+        }
+        av_free(out_buf);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        decodingFinished = true;
+    }
+    queueCv.notify_one();
 }
