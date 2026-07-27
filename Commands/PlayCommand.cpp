@@ -119,8 +119,12 @@ void PlayCommand::pcmResample()
     av_dict_set(&options, "headers",
                 "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n",
                 0);
+    av_dict_set(&options, "buffer_size", "1048576", 0); // 1MB read buffer
+    av_dict_set(&options, "reconnect", "1", 0);
+    av_dict_set(&options, "reconnect_streamed", "1", 0);
+    av_dict_set(&options, "reconnect_delay_max", "5", 0);
     AVFormatContext *format = nullptr;
-    int errorCode = avformat_open_input(&format, "https://rr2---sn-cxn3pqhxqp5-3g3l.googlevideo.com/videoplayback?expire=1785189077&ei=dX5natGyBpyDi9oPqJuCiQs&ip=109.95.112.195&id=o-AJqLQaIirpnbmeQtGP7nBJnrHmQGm-c7kTIuHa3PK04c&itag=251&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=346&met=1785167477%2C&mh=Fp&mm=31%2C29&mn=sn-cxn3pqhxqp5-3g3l%2Csn-ajf5f5-53&ms=au%2Crdu&mv=m&mvi=2&pl=21&rms=au%2Cau&initcwndbps=3461250&bui=AZFlqhPGErrfcIZPrRMC2A0AS1fHSjyJ3E6zYTnypIpJuoJ1rUrYFfh9sX2NdUUIEOMcjvluE9vUHXYz&spc=SQ-umomT4lZursjvHjKPC4BirYJKE_V2yVQXvSa11C9Y&vprv=1&svpuc=1&mime=audio%2Fwebm&rqh=1&gir=yes&clen=657730947&dur=36032.681&lmt=1735685201837101&mt=1785167108&fvip=4&keepalive=yes&fexp=51565116%2C51992867&c=ANDROID_VR&txp=5432434&sparams=expire%2Cei%2Cip%2Cid%2Citag%2Csource%2Crequiressl%2Cxpc%2Cbui%2Cspc%2Cvprv%2Csvpuc%2Cmime%2Crqh%2Cgir%2Cclen%2Cdur%2Clmt&sig=AE0s2JYwRgIhAMNywDaCWWsQq6DENFECDgwZnrE2BrTW6IKv83SKK3KtAiEAxG7pF7ZdJAT7h-NPRpvaSD9Hcj-phZXGY2UKJDhf4Ck%3D&lsparams=cps%2Cmet%2Cmh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Crms%2Cinitcwndbps&lsig=APaTxxMwRQIhAJ2INcqxgP2UTrXXTz0b_WYZsmhkKE-HdmIHfCeNJmCJAiBEIy27qWmheqMfJ0bJbBOxAQzCG407OL0iTNlpQ-UdCw%3D%3D", nullptr, &options);
+    int errorCode = avformat_open_input(&format, "https://rr2---sn-cxn3pqhxqp5-3g3l.googlevideo.com/videoplayback?expire=1785189326&ei=bn9nasu7M6Xi6dsPzPjIiQY&ip=109.95.112.195&id=o-ALSJNX28kT9ZN8ucxa38ytuHNCPKZpH49ro1spR7FKuI&itag=251&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=850&met=1785167726%2C&mh=zj&mm=31%2C29&mn=sn-cxn3pqhxqp5-3g3l%2Csn-f5f7knee&ms=au%2Crdu&mv=m&mvi=2&pl=21&rms=au%2Cau&initcwndbps=3352500&bui=AZFlqhMG_7u79g4RWu4YuLPab3Apk-X9H2xdM27x4IAlHu5M4Lv2qM4NKGZJysEQgzdZ635HREN_W88E&spc=SQ-umnIEILhQS-QOINhZkH5kB7768a6nafwv20uGhaWS&vprv=1&svpuc=1&mime=audio%2Fwebm&rqh=1&gir=yes&clen=174757070&dur=10821.781&lmt=1711912343475561&mt=1785167357&fvip=5&keepalive=yes&fexp=51565116%2C51992867&c=ANDROID_VR&txp=1308224&sparams=expire%2Cei%2Cip%2Cid%2Citag%2Csource%2Crequiressl%2Cxpc%2Cbui%2Cspc%2Cvprv%2Csvpuc%2Cmime%2Crqh%2Cgir%2Cclen%2Cdur%2Clmt&sig=AE0s2JYwRQIgHiHOdgi9E-QPhAgRBbIAArv-1UbrCElGBYxVMSOk74UCIQC9AnZM7nfHJc0We14EeK3lJJ4XUqJ_tVT7YUamoDl2gQ%3D%3D&lsparams=cps%2Cmet%2Cmh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Crms%2Cinitcwndbps&lsig=APaTxxMwRAIgK3MhwtvFNhNQ06HbEvBfpD3xrVmU-aIZZ4J0HUeUyKkCIEavrjHAfeN0wosEKhR7-eA7QmfrXVv3Ub9ohQZwkqy7", nullptr, &options);
 
     if (errorCode < 0) {
         char errbuf[256];
@@ -176,13 +180,18 @@ void PlayCommand::pcmResample()
             continue;
         }
 
+        int maxOutSamples = swr_get_out_samples(swr, codec_ctx->frame_size > 0 ? codec_ctx->frame_size : 4096);
+        int maxBufSize = av_samples_get_buffer_size(nullptr, 2, maxOutSamples, AV_SAMPLE_FMT_S16, 1);
+        uint8_t *out_buf = (uint8_t*)av_malloc(maxBufSize * 2); // some headroom
+
         while (avcodec_receive_frame(codec_ctx, frame) >= 0) {
             int out_samples = swr_get_out_samples(swr, frame->nb_samples);
 
-            uint8_t *out_buf = nullptr;
             int out_buf_size = av_samples_get_buffer_size(nullptr, 2, out_samples, AV_SAMPLE_FMT_S16, 1);
-
-            out_buf = (uint8_t*)av_malloc(out_buf_size);
+            if (out_buf_size > maxBufSize) {
+                av_free(out_buf);
+                out_buf = (uint8_t*)av_malloc(out_buf_size);
+            }
 
             int samples_converted = swr_convert(
                 swr,
@@ -202,9 +211,10 @@ void PlayCommand::pcmResample()
                 }
                 queueCv.notify_one();
             }
-            av_free(out_buf);
+            // av_free(out_buf);
             av_frame_unref(frame);
         }
+        av_free(out_buf);
 
         av_packet_unref(packet);
     }
