@@ -1,7 +1,9 @@
-#include "PlayCommand.h"
+#include "Handler.h"
 
-#include <dpp/dpp.h>
+#include <windows.h>
+#include <iostream>
 #include <QDebug>
+#include "WindowsProcessRunner.h"
 
 extern "C" {
 #include <libavutil/frame.h>
@@ -11,124 +13,46 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
+struct PipeReaderCtx {
+    HANDLE pipeHandle;
+};
 
-PlayCommand::PlayCommand(std::string name, std::string reply)
-    : JoinCommand(name, reply)
-{
-
-}
-
-void PlayCommand::execute(const dpp::slashcommand_t &event)
-{
-    JoinCommand::execute(event);
-    Sleep(3000);
-
-    /* Get the voice channel the bot is in, in this current guild. */
-    dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
-
-    /* If the voice channel was invalid, or there is an issue with it, then tell the user. */
-    if (!currentVoiceChannel || !currentVoiceChannel->voiceclient || !currentVoiceChannel->voiceclient->is_ready()) {
-        event.reply("There was an issue with getting the voice channel. Make sure I'm in a voice channel!");
-        return;
+static int readPacketCallback(void* opaque, uint8_t* buf, int bufSize) {
+    auto* ctx = static_cast<PipeReaderCtx*>(opaque);
+    DWORD bytesRead = 0;
+    BOOL ok = ReadFile(ctx->pipeHandle, buf, bufSize, &bytesRead, nullptr);
+    if (!ok || bytesRead == 0) {
+        return AVERROR_EOF;
     }
-
-    // encoder.openFile();
-
-    resamplingThread = std::thread(&PlayCommand::pcmResample, this);
-    resamplingThread.detach();
-
-    audioThread = std::thread(&PlayCommand::streamAudio, this, currentVoiceChannel);
-    audioThread.detach();
-
-    // Stream audio in a separate thread
-    event.reply("Played music.");
+    return static_cast<int>(bytesRead);
 }
 
-std::string PlayCommand::name()
+void Handler::resample()
 {
-    return cmdName;
-}
+    HANDLE pipeHandle;
+    WindowsProcessRunner runner("some_url_here", pipeHandle);
+    runner.launchYtDlp();
 
-std::string PlayCommand::getReply()
-{
-    return reply;
-}
-
-void PlayCommand::stopSendingData()
-{
-    isPlaying = false;
-}
-
-std::vector<uint8_t> accumulator;
-
-void PlayCommand::streamAudio(dpp::voiceconn *vc)
-{
-    const int CHUNK_SIZE = 384000; // 2s of data
-    const int FOUR_BYTE_ALIGNMENT = 4;
-    size_t readOffset = 0;
-    isPlaying = true;
-
-    while (isPlaying) {
-        std::vector<uint8_t> chunk;
-        {
-            std::unique_lock<std::mutex> lock(queueMutex);
-            queueCv.wait(lock, [this] {
-                return !audioQueue.empty() || decodingFinished;
-            });
-            if (audioQueue.empty() && decodingFinished && accumulator.size() < CHUNK_SIZE) break;
-
-            if (!audioQueue.empty()) {
-                chunk = std::move(audioQueue.front());
-                audioQueue.pop();
-            }
-        }
-
-        accumulator.insert(accumulator.end(), chunk.begin(), chunk.end());
-
-        while (accumulator.size() - readOffset >= CHUNK_SIZE) {
-            qDebug() << "Sending chunk... of size: " << accumulator.size();
-            vc->voiceclient->send_audio_raw((uint16_t*)(accumulator.data() + readOffset), CHUNK_SIZE);
-            readOffset += CHUNK_SIZE;
-        }
-
-        if (readOffset > CHUNK_SIZE * 4) {
-            accumulator.erase(accumulator.begin(), accumulator.begin() + readOffset);
-            readOffset = 0;
-        }
-    }
-
-    size_t remaining = accumulator.size() - readOffset;
-    if (remaining > 0) {
-        size_t alignedSize = remaining - (remaining % FOUR_BYTE_ALIGNMENT);
-        if (alignedSize > 0) {
-            vc->voiceclient->send_audio_raw((uint16_t*)(accumulator.data() + readOffset), alignedSize);
-        }
-    }
-
-    // Send a brief silence to cleanly stop instead of cutting off abruptly
-    if (!isPlaying) {
-        std::vector<uint8_t> silence(CHUNK_SIZE, 0);
-        vc->voiceclient->send_audio_raw((uint16_t*)silence.data(), CHUNK_SIZE);
-    }
-
-    isPlaying = false;
-}
-
-void PlayCommand::pcmResample()
-{
     pcmData.clear();
 
-    AVDictionary *options = nullptr;
-    av_dict_set(&options, "headers",
-                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n",
-                0);
-    av_dict_set(&options, "buffer_size", "1048576", 0); // 1MB read buffer
-    av_dict_set(&options, "reconnect", "1", 0);
-    av_dict_set(&options, "reconnect_streamed", "1", 0);
-    av_dict_set(&options, "reconnect_delay_max", "5", 0);
-    av_dict_set(&options, "multiple_requests", "1", 0);
-    AVFormatContext *format = nullptr;
-    int errorCode = avformat_open_input(&format, "https://rr2---sn-cxn3pqhxqp5-3g3l.googlevideo.com/videoplayback?expire=1785208850&ei=sstnav7jGtifgMMPvfu7iAU&ip=109.95.112.195&id=o-AEbhyuLR_XL0QtGjHNLcP3c3Epnn3uU5PMivxXoF9vJs&itag=251&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=978&met=1785187250%2C&mh=zj&mm=31%2C29&mn=sn-cxn3pqhxqp5-3g3l%2Csn-f5f7knee&ms=au%2Crdu&mv=m&mvi=2&pl=21&rms=au%2Cau&initcwndbps=3170000&bui=AZFlqhM6KI6gp-HSkMmHDll7zZpOiYQd_rF36HCvYorQxWeWsI1EbHn5GTLKI2Zh_LKVBdnpUJASHpLz&spc=SQ-umgISYibHWDY-Z5SELG02NWw5MrqsKhjrNgiEMRjR&vprv=1&svpuc=1&mime=audio%2Fwebm&rqh=1&gir=yes&clen=174757070&dur=10821.781&lmt=1711912343475561&mt=1785186801&fvip=5&keepalive=yes&fexp=51565115%2C51992868&c=ANDROID_VR&txp=1308224&sparams=expire%2Cei%2Cip%2Cid%2Citag%2Csource%2Crequiressl%2Cxpc%2Cbui%2Cspc%2Cvprv%2Csvpuc%2Cmime%2Crqh%2Cgir%2Cclen%2Cdur%2Clmt&sig=AE0s2JYwRgIhAKEtdNcZ0SzQQaErCS-3HuVi-qB2pT0uJ85X6NXuX9kyAiEA2KFrVARK4WPdKOK8PEYnER-tMbr4NPWyHwL-yGSJkMc%3D&lsparams=cps%2Cmet%2Cmh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Crms%2Cinitcwndbps&lsig=APaTxxMwRgIhAJfghnYWnm1uwA9f28Wi3PLrc3SCmog1ohcObreEaiOdAiEArRtqKdiKGe8lZRVcndF7LFCc-sqHibek3FqStDlZIqg%3D", nullptr, &options);
+    PipeReaderCtx pipeCtx{ pipeHandle };
+    const int bufferSize = 32768;
+    uint8_t* avioBuffer = (uint8_t*)av_malloc(bufferSize);
+
+    AVIOContext* avioCtx = avio_alloc_context(
+        avioBuffer, bufferSize,
+        0,              // write flag = 0 (read-only)
+        &pipeCtx,        // opaque, passed to callback
+        &readPacketCallback,
+        nullptr,        // no write callback
+        nullptr         // no seek callback (stdin/pipe can't seek)
+        );
+
+    AVFormatContext* format = avformat_alloc_context();
+    format->pb = avioCtx;
+    format->flags |= AVFMT_FLAG_CUSTOM_IO;
+
+    int errorCode = avformat_open_input(&format, nullptr, nullptr, nullptr);
 
     if (errorCode < 0) {
         char errbuf[256];

@@ -43,6 +43,8 @@ add_executable(discord_bot
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
   Encoders/Mp3Encoder.h Encoders/Mp3Encoder.cpp
+  WindowsProcessRunner.h WindowsProcessRunner.cpp
+  Handler.h Handler.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
