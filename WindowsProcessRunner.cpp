@@ -84,7 +84,18 @@ static std::string ansiToUtf8(const std::string &text)
     return utf8;
 }
 
-ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &youtubeUrl)
+static std::wstring utf8ToWide(const std::string &text)
+{
+    int wideLen = MultiByteToWideChar(CP_UTF8, 0, text.data(), (int)text.size(), nullptr, 0);
+    if (wideLen <= 0) {
+        return {};
+    }
+    std::wstring wide(wideLen, 0);
+    MultiByteToWideChar(CP_UTF8, 0, text.data(), (int)text.size(), wide.data(), wideLen);
+    return wide;
+}
+
+ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &target)
 {
     SECURITY_ATTRIBUTES secAttr{};
     secAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -98,8 +109,8 @@ ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &youtubeUrl)
     }
     SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
 
-    STARTUPINFOA startupInfo{};
-    startupInfo.cb = sizeof(STARTUPINFOA);
+    STARTUPINFOW startupInfo{};
+    startupInfo.cb = sizeof(STARTUPINFOW);
     startupInfo.dwFlags |= STARTF_USESTDHANDLES;
     startupInfo.hStdOutput = writePipe;
     startupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
@@ -108,14 +119,16 @@ ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &youtubeUrl)
     // the direct media URL on the next, in one process. Without
     // --encoding utf-8, yt-dlp writes pipe output in the ANSI code page
     // (cp1250 here), which turns Polish titles into mojibake on Discord.
-    const std::string args = " --no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print urls \"" + youtubeUrl + "\"";
+    // The command line goes through CreateProcessW as UTF-16 - the A variant
+    // would mangle non-ASCII search queries through the ANSI code page.
+    const std::string args = " --no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print urls \"" + target + "\"";
 
     PROCESS_INFORMATION processInfo{};
-    std::string commandToRun = "yt-dlp" + args;
-    if (!CreateProcessA(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo)) {
+    std::wstring commandToRun = utf8ToWide("yt-dlp" + args);
+    if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo)) {
         // yt-dlp not on PATH - retry with the known local install.
-        commandToRun = "\"C:/Users/kamil/Downloads/ytdlp/yt-dlp.exe\"" + args;
-        if (!CreateProcessA(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo)) {
+        commandToRun = utf8ToWide("\"C:/Users/kamil/Downloads/ytdlp/yt-dlp.exe\"" + args);
+        if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo)) {
             qDebug() << "Failed to create yt-dlp process";
             CloseHandle(readPipe);
             CloseHandle(writePipe);

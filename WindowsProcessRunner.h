@@ -21,8 +21,9 @@ public:
     void launchYtDlp(); //virtual or template?
 
     // Runs yt-dlp once to resolve both the video title and the direct media
-    // URL. directUrl is empty on failure.
-    static ResolvedMedia resolveMedia(const std::string &youtubeUrl);
+    // URL. The target is either a YouTube url or a "ytsearch1:<query>"
+    // search expression. directUrl is empty on failure.
+    static ResolvedMedia resolveMedia(const std::string &target);
 
 private:
     std::string mUrl;

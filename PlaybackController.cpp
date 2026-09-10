@@ -17,6 +17,17 @@ PlaybackController::PlaybackController()
     workerThread = std::thread(&PlaybackController::playbackWorker, this);
 }
 
+// Queue entries hold the raw yt-dlp target; show searches in a friendlier
+// form until the real title is resolved at play time.
+static std::string displayLabelFor(const std::string &target)
+{
+    const std::string searchPrefix = "ytsearch1:";
+    if (target.rfind(searchPrefix, 0) == 0) {
+        return "search: " + target.substr(searchPrefix.size());
+    }
+    return target;
+}
+
 PlaybackController::~PlaybackController()
 {
     {
@@ -116,7 +127,7 @@ PlaybackController::QueueSnapshot PlaybackController::queueSnapshot()
     std::lock_guard<std::mutex> lock(stateMutex);
     snapshot.current = currentSongLabel;
     for (const Song &song : songQueue) {
-        snapshot.queued.push_back(song.youtubeUrl);
+        snapshot.queued.push_back(displayLabelFor(song.youtubeUrl));
     }
     return snapshot;
 }
@@ -138,7 +149,7 @@ void PlaybackController::playbackWorker()
             songQueue.pop_front();
             voiceClient = currentVoiceClient;
             songActive = true;
-            currentSongLabel = song.youtubeUrl;
+            currentSongLabel = displayLabelFor(song.youtubeUrl);
         }
 
         // Blocks until the song ends naturally or is skipped/stopped;

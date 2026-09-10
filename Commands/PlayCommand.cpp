@@ -6,7 +6,7 @@
 #include <cctype>
 
 PlayCommand::PlayCommand(std::shared_ptr<PlaybackController> playback_)
-    : Command("play", "plays audio from the given youtube link")
+    : Command("play", "plays from a youtube link or searches by title")
     , playback(playback_)
 {
 }
@@ -47,10 +47,26 @@ static bool isAllowedYoutubeUrl(const std::string &url)
     return true;
 }
 
+// Free-text search lands on the same yt-dlp command line - keep it short and
+// free of quotes/control characters so it can't escape the quoted argument.
+static bool isReasonableSearchQuery(const std::string &query)
+{
+    if (query.empty() || query.size() > 150) {
+        return false;
+    }
+    for (char c : query) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        if (uc < 0x20 || c == '"' || c == '\\') {
+            return false;
+        }
+    }
+    return true;
+}
+
 dpp::slashcommand PlayCommand::definition(dpp::snowflake botId) const
 {
     dpp::slashcommand cmd(name(), description(), botId);
-    cmd.add_option(dpp::command_option(dpp::co_string, "url", "YouTube video link", true));
+    cmd.add_option(dpp::command_option(dpp::co_string, "song", "YouTube link or a song title to search for", true));
     return cmd;
 }
 
@@ -65,18 +81,25 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
     // pipeline later edits into "Playing: <title>" or an error message.
     event.reply("Looking for your song...");
 
-    std::string yturl;
-    auto urlParameter = event.get_parameter("url");
-    if (std::holds_alternative<std::string>(urlParameter)) {
-        yturl = std::get<std::string>(urlParameter);
+    std::string input;
+    auto songParameter = event.get_parameter("song");
+    if (std::holds_alternative<std::string>(songParameter)) {
+        input = std::get<std::string>(songParameter);
     }
 
-    if (!isAllowedYoutubeUrl(yturl)) {
-        event.edit_original_response(dpp::message("That doesn't look like a YouTube link I can play!"));
+    // A valid YouTube link plays directly; anything else becomes a yt-dlp
+    // search for the first matching video.
+    std::string target;
+    if (isAllowedYoutubeUrl(input)) {
+        target = input;
+    } else if (isReasonableSearchQuery(input)) {
+        target = "ytsearch1:" + input;
+    } else {
+        event.edit_original_response(dpp::message("Give me a YouTube link or a song title to search for!"));
         return;
     }
 
-    size_t waitingPosition = playback->play(yturl, event);
+    size_t waitingPosition = playback->play(target, event);
     if (waitingPosition > 0) {
         // Something is already playing; the placeholder becomes the queue
         // confirmation and morphs into "Playing: <title>" when its turn comes.
