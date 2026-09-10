@@ -16,11 +16,13 @@ class PlayCommand : public JoinCommand
 {
 public:
     PlayCommand(std::string name, std::string reply);
+    ~PlayCommand();
 
     void execute(const dpp::slashcommand_t &event) override;
     std::string name() override;
     std::string getReply() override;
     void stopSendingData();
+    void stopPlayback();
 
 private:
     Mp3Encoder encoder;

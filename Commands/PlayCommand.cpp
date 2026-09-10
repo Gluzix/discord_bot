@@ -18,6 +18,11 @@ PlayCommand::PlayCommand(std::string name, std::string reply)
 
 }
 
+PlayCommand::~PlayCommand()
+{
+    stopPlayback();
+}
+
 void PlayCommand::execute(const dpp::slashcommand_t &event)
 {
     JoinCommand::execute(event);
@@ -34,19 +39,24 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
 
     // encoder.openFile();
 
+    // A previous session's threads may still be decoding the old song (they
+    // used to outlive /leave); stop and join them, then discard whatever DPP
+    // still has queued, so old packets can't mix into the new song.
+    stopPlayback();
+    currentVoiceChannel->voiceclient->stop_audio();
+
     // Reset leftovers from a previous play, otherwise streamAudio sees
-    // decodingFinished == true and exits immediately.
+    // decodingFinished == true and exits immediately. isPlaying must be set
+    // before the threads start — both loops check it.
     {
         std::lock_guard<std::mutex> lock(queueMutex);
         decodingFinished = false;
         audioQueue = {};
     }
+    isPlaying = true;
 
     resamplingThread = std::thread(&PlayCommand::pcmResample, this);
-    resamplingThread.detach();
-
     audioThread = std::thread(&PlayCommand::streamAudio, this, currentVoiceChannel);
-    audioThread.detach();
 
     // Stream audio in a separate thread
     event.reply("Played music.");
@@ -68,10 +78,23 @@ void PlayCommand::stopSendingData()
     queueCv.notify_all();
 }
 
+void PlayCommand::stopPlayback()
+{
+    stopSendingData();
+
+    // Join instead of abandoning the threads: a detached decoder outlives
+    // /leave and keeps pushing the old song's packets into the queue, which
+    // then interleave with the next song's.
+    if (resamplingThread.joinable()) {
+        resamplingThread.join();
+    }
+    if (audioThread.joinable()) {
+        audioThread.join();
+    }
+}
+
 void PlayCommand::streamAudio(dpp::voiceconn *vc)
 {
-    isPlaying = true;
-
     // The decoder fills the queue with ready-to-send packets of exactly
     // dpp::send_audio_raw_max_length bytes; only the final one may be shorter.
     while (isPlaying) {
@@ -186,7 +209,7 @@ void PlayCommand::pcmResample()
     auto readTime = std::chrono::steady_clock::duration::zero();
     auto decodeTime = std::chrono::steady_clock::duration::zero();
 
-    while (true) {
+    while (isPlaying) {
         auto t0 = std::chrono::steady_clock::now();
         int ret = av_read_frame(format, packet);
         auto t1 = std::chrono::steady_clock::now();

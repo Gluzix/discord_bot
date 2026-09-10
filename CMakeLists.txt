@@ -39,6 +39,7 @@ add_executable(discord_bot
   Commands/CommandHandler.h
   Commands/CommandHandler.cpp
   Commands/LeaveCommand.h Commands/LeaveCommand.cpp
+  Commands/StopCommand.h Commands/StopCommand.cpp
   Commands/StartTimerCommand.h Commands/StartTimerCommand.cpp
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
