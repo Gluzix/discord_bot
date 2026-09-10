@@ -1,11 +1,12 @@
 #include "LeaveCommand.h"
+#include "PlaybackController.h"
 
 #include <dpp/dpp.h>
 
-LeaveCommand::LeaveCommand(std::string name)
-    : Command(name)
+LeaveCommand::LeaveCommand(std::shared_ptr<PlaybackController> playback_)
+    : Command("leave", "I will leave your channel!")
+    , playback(playback_)
 {
-    reply = "I will leave your channel!";
 }
 
 void LeaveCommand::execute(const dpp::slashcommand_t &event)
@@ -25,7 +26,7 @@ void LeaveCommand::execute(const dpp::slashcommand_t &event)
         if (usersVcIterator != guild->voice_members.end() && currentVoiceChannel->channel_id == usersVcIterator->second.channel_id) {
 
             if (currentVoiceChannel->voiceclient->is_playing()) {
-                stopPlayingFunc();
+                playback->stop();
                 currentVoiceChannel->voiceclient->stop_audio();
             }
 
@@ -42,19 +43,4 @@ void LeaveCommand::execute(const dpp::slashcommand_t &event)
     } else {
         event.reply("Cannot leave, I'm not on the same channel as you!");
     }
-}
-
-std::string LeaveCommand::name()
-{
-    return cmdName;
-}
-
-std::string LeaveCommand::getReply()
-{
-    return reply;
-}
-
-void LeaveCommand::setStopPlayingFunction(const std::function<void ()> &func)
-{
-    stopPlayingFunc = func;
 }

@@ -8,12 +8,10 @@
 class StartTimerCommand : public Command
 {
 public:
-    StartTimerCommand(const std::string &name, const std::string &reply, std::shared_ptr<dpp::cluster> bot_,
+    StartTimerCommand(const std::string &name, const std::string &description, std::shared_ptr<dpp::cluster> bot_,
                       std::map<dpp::snowflake, dpp::timer> &userTimers_);
 
-    void execute(const dpp::slashcommand_t &event);
-    std::string name();
-    std::string getReply();
+    void execute(const dpp::slashcommand_t &event) override;
 
 private:
     std::shared_ptr<dpp::cluster> bot;

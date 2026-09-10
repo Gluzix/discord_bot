@@ -2,20 +2,17 @@
 
 #include "Command.h"
 
-#include <functional>
+#include <memory>
+
+class PlaybackController;
 
 class StopCommand : public Command
 {
 public:
-    StopCommand(std::string name);
+    explicit StopCommand(std::shared_ptr<PlaybackController> playback_);
 
     void execute(const dpp::slashcommand_t &event) override;
-    std::string name() override;
-    std::string getReply() override;
-
-    void setStopPlayingFunction(const std::function<void()> &func);
 
 private:
-    std::function<void()> stopPlayingFunc;
-
+    std::shared_ptr<PlaybackController> playback;
 };

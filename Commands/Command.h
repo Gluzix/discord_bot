@@ -2,28 +2,26 @@
 
 #include "ICommand.h"
 
-#include <utility>
 #include <string>
 
 class Command : public ICommand
 {
 public:
     Command(const Command& other) = delete;
-    Command(const Command&& other) = delete;
+    Command(Command&& other) = delete;
     Command() = delete;
     Command& operator=(const Command& other) = delete;
 
-    Command(std::string name_, std::string defaultReply_ = "");
-    ~Command();
+    Command(std::string name_, std::string description_);
+    ~Command() override;
 
-    void setReply(const std::string &reply_);
+    std::string name() const override;
+    std::string description() const override;
 
-    void execute(const dpp::slashcommand_t& event) override;
-    void prepare() override;
-    std::string name() override;
-    std::string getReply() override;
+    // Generic behavior: reply with the description text.
+    void execute(const dpp::slashcommand_t &event) override;
 
 protected:
     std::string cmdName{};
-    std::string reply{};
+    std::string cmdDescription{};
 };

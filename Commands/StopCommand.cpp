@@ -1,11 +1,12 @@
 #include "StopCommand.h"
+#include "PlaybackController.h"
 
 #include <dpp/dpp.h>
 
-StopCommand::StopCommand(std::string name)
-    : Command(name)
+StopCommand::StopCommand(std::shared_ptr<PlaybackController> playback_)
+    : Command("stop", "stop playing music")
+    , playback(playback_)
 {
-    reply = "stop playing music";
 }
 
 void StopCommand::execute(const dpp::slashcommand_t &event)
@@ -21,9 +22,7 @@ void StopCommand::execute(const dpp::slashcommand_t &event)
 
     // Stop the decoder/sender threads regardless, so nothing keeps refilling
     // the queue even if DPP happened to be momentarily drained.
-    if (stopPlayingFunc) {
-        stopPlayingFunc();
-    }
+    playback->stop();
 
     if (!wasPlaying) {
         event.reply("Nothing is playing right now!");
@@ -35,19 +34,4 @@ void StopCommand::execute(const dpp::slashcommand_t &event)
     currentVoiceChannel->voiceclient->stop_audio();
 
     event.reply("Stopped playing.");
-}
-
-std::string StopCommand::name()
-{
-    return cmdName;
-}
-
-std::string StopCommand::getReply()
-{
-    return reply;
-}
-
-void StopCommand::setStopPlayingFunction(const std::function<void ()> &func)
-{
-    stopPlayingFunc = func;
 }

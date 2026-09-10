@@ -2,9 +2,9 @@
 
 #include <dpp/unicode_emoji.h>
 
-StartTimerCommand::StartTimerCommand(const std::string &name, const std::string &reply, std::shared_ptr<dpp::cluster> bot_,
+StartTimerCommand::StartTimerCommand(const std::string &name, const std::string &description, std::shared_ptr<dpp::cluster> bot_,
                                      std::map<dpp::snowflake, dpp::timer> &userTimers_)
-    : Command(name, reply)
+    : Command(name, description)
     , bot(bot_)
     , userTimers(userTimers_)
 {
@@ -53,14 +53,4 @@ void StartTimerCommand::execute(const dpp::slashcommand_t &event)
 
         event.reply("Stopped your timer!");
     }
-}
-
-std::string StartTimerCommand::name()
-{
-    return cmdName;
-}
-
-std::string StartTimerCommand::getReply()
-{
-    return reply;
 }

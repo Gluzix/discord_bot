@@ -2,16 +2,11 @@
 
 #include <dpp/dpp.h>
 
-Command::Command(std::string name_, std::string defaultReply_)
-    : cmdName(name_)
-    , reply(defaultReply_)
+Command::Command(std::string name_, std::string description_)
+    : cmdName(std::move(name_))
+    , cmdDescription(std::move(description_))
 {
 
-}
-
-void Command::setReply(const std::string &reply_)
-{
-    reply = reply_;
 }
 
 Command::~Command()
@@ -19,21 +14,17 @@ Command::~Command()
 
 }
 
-void Command::execute(const dpp::slashcommand_t &event)
-{
-    event.reply(getReply());
-}
-
-void Command::prepare()
-{
-}
-
-std::string Command::name()
+std::string Command::name() const
 {
     return cmdName;
 }
 
-std::string Command::getReply()
+std::string Command::description() const
 {
-    return reply;
+    return cmdDescription;
+}
+
+void Command::execute(const dpp::slashcommand_t &event)
+{
+    event.reply(cmdDescription);
 }

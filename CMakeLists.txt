@@ -45,6 +45,8 @@ add_executable(discord_bot
 
   Encoders/Mp3Encoder.h Encoders/Mp3Encoder.cpp
   WindowsProcessRunner.h WindowsProcessRunner.cpp
+  PlaybackController.h PlaybackController.cpp
+  VoiceConnector.h VoiceConnector.cpp
   Handler.h Handler.cpp
 )
 
