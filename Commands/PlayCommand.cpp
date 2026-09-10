@@ -76,5 +76,10 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
         return;
     }
 
-    playback->play(yturl, event);
+    size_t waitingPosition = playback->play(yturl, event);
+    if (waitingPosition > 0) {
+        // Something is already playing; the placeholder becomes the queue
+        // confirmation and morphs into "Playing: <title>" when its turn comes.
+        event.edit_original_response(dpp::message("Queued at position " + std::to_string(waitingPosition)));
+    }
 }

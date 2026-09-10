@@ -33,5 +33,5 @@ void StopCommand::execute(const dpp::slashcommand_t &event)
     // playback continues until its internal queue drains.
     currentVoiceChannel->voiceclient->stop_audio();
 
-    event.reply("Stopped playing.");
+    event.reply("Stopped playing and cleared the queue.");
 }

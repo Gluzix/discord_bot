@@ -3,6 +3,8 @@
 #include "JoinCommand.h"
 #include "LeaveCommand.h"
 #include "StopCommand.h"
+#include "SkipCommand.h"
+#include "QueueCommand.h"
 #include "StartTimerCommand.h"
 #include "PlayCommand.h"
 #include "PlaybackController.h"
@@ -26,6 +28,8 @@ void CommandHandler::prepare()
     add<PlayCommand>(playback);
     add<StopCommand>(playback);
     add<LeaveCommand>(playback);
+    add<SkipCommand>(playback);
+    add<QueueCommand>(playback);
     add<StartTimerCommand>("start_timer", "started timer...", bot, userTimers);
     add<StartTimerCommand>("stop_timer", "stopped timer...", bot, userTimers);
 

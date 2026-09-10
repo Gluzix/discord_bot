@@ -12,96 +12,168 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-PlaybackController::~PlaybackController()
+PlaybackController::PlaybackController()
 {
-    stop();
+    workerThread = std::thread(&PlaybackController::playbackWorker, this);
 }
 
-void PlaybackController::play(const std::string &youtubeUrl, const dpp::slashcommand_t &event)
+PlaybackController::~PlaybackController()
 {
-    dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
-    if (currentVoiceChannel && currentVoiceChannel->voiceclient && currentVoiceChannel->voiceclient->is_ready()) {
-        // Already connected - start right away. voiceconn owns the client
-        // as a unique_ptr; we pass the raw pointer through.
-        startPlayback(currentVoiceChannel->voiceclient.get(), youtubeUrl, event);
-        return;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        running = false;
+        songQueue.clear();
+    }
+    stopSendingData();
+    stateCv.notify_all();
+    if (workerThread.joinable()) {
+        workerThread.join();
+    }
+}
+
+size_t PlaybackController::play(const std::string &youtubeUrl, const dpp::slashcommand_t &event)
+{
+    size_t waitingPosition = 0;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+
+        bool busy = songActive || !songQueue.empty();
+
+        Song song;
+        song.youtubeUrl = youtubeUrl;
+        song.event = std::make_unique<dpp::slashcommand_t>(event);
+        songQueue.push_back(std::move(song));
+
+        // A ready voice connection travels with the request; if the
+        // handshake is still in flight, songs simply wait in the queue
+        // until onVoiceReady provides the client.
+        dpp::voiceconn* vc = event.from()->get_voice(event.command.guild_id);
+        if (vc && vc->voiceclient && vc->voiceclient->is_ready()) {
+            currentVoiceClient = vc->voiceclient.get();
+        }
+
+        if (busy) {
+            waitingPosition = songQueue.size();
+        }
+    }
+    stateCv.notify_all();
+    return waitingPosition;
+}
+
+bool PlaybackController::skip()
+{
+    dpp::discord_voice_client *voiceClient = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        if (!songActive) {
+            return false;
+        }
+        voiceClient = currentVoiceClient;
     }
 
-    // connect_member_voice is asynchronous and the handshake is still in
-    // flight; park the request, onVoiceReady starts it once the connection
-    // can accept audio.
-    std::lock_guard<std::mutex> lock(pendingMutex);
-    pendingUrl = youtubeUrl;
-    pendingGuildId = event.command.guild_id;
-    pendingEvent = std::make_unique<dpp::slashcommand_t>(event);
+    // Ending the current song is enough - the worker joins its threads and
+    // advances to the next queued one on its own.
+    stopSendingData();
+    if (voiceClient) {
+        voiceClient->stop_audio();
+    }
+    return true;
+}
+
+void PlaybackController::stop()
+{
+    dpp::discord_voice_client *voiceClient = nullptr;
+    bool wasActive = false;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        songQueue.clear();
+        wasActive = songActive;
+        voiceClient = currentVoiceClient;
+        // The pointer dies with the voice connection on /leave; drop it so
+        // the worker can't start a queued song on a dead client. The next
+        // /play or onVoiceReady provides a fresh one.
+        currentVoiceClient = nullptr;
+    }
+
+    stopSendingData();
+    if (wasActive && voiceClient) {
+        voiceClient->stop_audio();
+    }
 }
 
 void PlaybackController::onVoiceReady(const dpp::voice_ready_t &event)
 {
-    std::unique_ptr<dpp::slashcommand_t> requestEvent;
-    std::string url;
     {
-        std::lock_guard<std::mutex> lock(pendingMutex);
-        if (!pendingEvent || !event.voice_client || event.voice_client->server_id != pendingGuildId) {
-            return;
-        }
-        url = std::move(pendingUrl);
-        requestEvent = std::move(pendingEvent);
+        std::lock_guard<std::mutex> lock(stateMutex);
+        currentVoiceClient = event.voice_client;
     }
-    // pendingMutex is released here on purpose: startPlayback -> stop
-    // takes it again to clear stale requests.
-    startPlayback(event.voice_client, url, *requestEvent);
+    stateCv.notify_all();
 }
 
-void PlaybackController::startPlayback(dpp::discord_voice_client *voiceClient, const std::string &url, const dpp::slashcommand_t &event)
+PlaybackController::QueueSnapshot PlaybackController::queueSnapshot()
 {
-    // A previous session's threads may still be decoding the old song; stop
-    // and join them, then discard whatever DPP still has queued, so old
-    // packets can't mix into the new song.
-    stop();
-    voiceClient->stop_audio();
+    QueueSnapshot snapshot;
+    std::lock_guard<std::mutex> lock(stateMutex);
+    snapshot.current = currentSongLabel;
+    for (const Song &song : songQueue) {
+        snapshot.queued.push_back(song.youtubeUrl);
+    }
+    return snapshot;
+}
 
-    // Reset leftovers from a previous play, otherwise streamAudio sees
-    // decodingFinished == true and exits immediately. isPlaying must be set
-    // before the threads start - both loops check it.
+void PlaybackController::playbackWorker()
+{
+    while (running) {
+        Song song;
+        dpp::discord_voice_client *voiceClient = nullptr;
+        {
+            std::unique_lock<std::mutex> lock(stateMutex);
+            stateCv.wait(lock, [this] {
+                return !running || (!songQueue.empty() && currentVoiceClient != nullptr);
+            });
+            if (!running) {
+                break;
+            }
+            song = std::move(songQueue.front());
+            songQueue.pop_front();
+            voiceClient = currentVoiceClient;
+            songActive = true;
+            currentSongLabel = song.youtubeUrl;
+        }
+
+        // Blocks until the song ends naturally or is skipped/stopped;
+        // finishing this call IS the auto-advance to the next loop turn.
+        playSong(voiceClient, std::move(song));
+
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            songActive = false;
+            currentSongLabel.clear();
+        }
+    }
+}
+
+void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, Song song)
+{
     {
         std::lock_guard<std::mutex> lock(queueMutex);
         decodingFinished = false;
         audioQueue = {};
     }
-    requestedUrl = url;
+    requestedUrl = song.youtubeUrl;
     isPlaying = true;
 
-    resamplingThread = std::thread(&PlaybackController::pcmResample, this, event);
+    resamplingThread = std::thread(&PlaybackController::pcmResample, this, *song.event);
     audioThread = std::thread(&PlaybackController::streamAudio, this, voiceClient);
+
+    resamplingThread.join();
+    audioThread.join();
 }
 
 void PlaybackController::stopSendingData()
 {
     isPlaying = false;
     queueCv.notify_all();
-}
-
-void PlaybackController::stop()
-{
-    // Forget any /play still waiting for its voice connection.
-    {
-        std::lock_guard<std::mutex> lock(pendingMutex);
-        pendingEvent.reset();
-        pendingUrl.clear();
-    }
-
-    stopSendingData();
-
-    // Join instead of abandoning the threads: a detached decoder outlives
-    // /leave and keeps pushing the old song's packets into the queue, which
-    // then interleave with the next song's.
-    if (resamplingThread.joinable()) {
-        resamplingThread.join();
-    }
-    if (audioThread.joinable()) {
-        audioThread.join();
-    }
 }
 
 void PlaybackController::streamAudio(dpp::discord_voice_client *voiceClient)
@@ -163,6 +235,11 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         event.edit_original_response(dpp::message("Couldn't get the audio from that link :("));
         signalFinished();
         return;
+    }
+
+    if (!media.title.empty()) {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        currentSongLabel = media.title;
     }
 
     std::string directUrl = media.directUrl;

@@ -15,12 +15,12 @@ find_package(FFmpeg REQUIRED)
 
 add_library(dpp SHARED IMPORTED)
 set_target_properties(dpp PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../libdpp-10.1.4-win64-debug-vs2022/bin/dpp.dll"
-    IMPORTED_IMPLIB   "${CMAKE_SOURCE_DIR}/../libdpp-10.1.4-win64-debug-vs2022/lib/dpp-10.1/dpp.lib"
+    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../libdpp-10.1.6-win64-debug-vs2022/bin/dpp.dll"
+    IMPORTED_IMPLIB   "${CMAKE_SOURCE_DIR}/../libdpp-10.1.6-win64-debug-vs2022/lib/dpp-10.1/dpp.lib"
 )
 
 target_include_directories(dpp INTERFACE
-    "${CMAKE_SOURCE_DIR}/../libdpp-10.1.4-win64-debug-vs2022/include/dpp-10.1"
+    "${CMAKE_SOURCE_DIR}/../libdpp-10.1.6-win64-debug-vs2022/include/dpp-10.1"
 )
 
 add_executable(discord_bot
@@ -40,6 +40,8 @@ add_executable(discord_bot
   Commands/CommandHandler.cpp
   Commands/LeaveCommand.h Commands/LeaveCommand.cpp
   Commands/StopCommand.h Commands/StopCommand.cpp
+  Commands/SkipCommand.h Commands/SkipCommand.cpp
+  Commands/QueueCommand.h Commands/QueueCommand.cpp
   Commands/StartTimerCommand.h Commands/StartTimerCommand.cpp
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
@@ -64,6 +66,16 @@ target_link_libraries(discord_bot
     FFmpeg::avformat
     FFmpeg::avutil
     swresample
+)
+
+# Keep the runtime pieces next to the exe: the freshly matching dpp.dll
+# (a stale copy once meant silently running an old DPP) and the CA bundle
+# OpenSSL needs for certificate verification on Windows.
+add_custom_command(TARGET discord_bot POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:dpp>"
+        "${CMAKE_SOURCE_DIR}/cacert.pem"
+        "$<TARGET_FILE_DIR:discord_bot>"
 )
 
 include(GNUInstallDirs)
