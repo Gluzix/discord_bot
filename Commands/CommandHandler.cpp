@@ -44,6 +44,12 @@ void CommandHandler::prepare()
     commands.push_back(std::make_unique<StartTimerCommand>("stop_timer", "stopped timer...", bot, userTimers));
 
     if (bot) {
+        // Starts a /play that was waiting for the voice handshake to finish.
+        bot->on_voice_ready([playCommandPtr](const dpp::voice_ready_t& event) {
+            if (playCommandPtr)
+                playCommandPtr->onVoiceReady(event);
+        });
+
         bot->on_slashcommand([this](const dpp::slashcommand_t& event) {
             for (const auto &cmd: commands)
             {

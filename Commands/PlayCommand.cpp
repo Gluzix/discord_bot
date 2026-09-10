@@ -63,20 +63,10 @@ static bool isAllowedYoutubeUrl(const std::string &url)
 
 void PlayCommand::execute(const dpp::slashcommand_t &event)
 {
+    // Acknowledges the interaction in every branch; any feedback from here
+    // on goes through edit_original_response.
     JoinCommand::execute(event);
-    Sleep(3000);
 
-    /* Get the voice channel the bot is in, in this current guild. */
-    dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
-
-    /* If the voice channel was invalid, or there is an issue with it, then tell the user. */
-    if (!currentVoiceChannel || !currentVoiceChannel->voiceclient || !currentVoiceChannel->voiceclient->is_ready()) {
-        event.reply("There was an issue with getting the voice channel. Make sure I'm in a voice channel!");
-        return;
-    }
-
-    // JoinCommand already acknowledged the interaction, so any feedback from
-    // here on goes through edit_original_response.
     std::string yturl;
     auto urlParameter = event.get_parameter("url");
     if (std::holds_alternative<std::string>(urlParameter)) {
@@ -88,13 +78,54 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
         return;
     }
 
-    // encoder.openFile();
+    /* The user must be in a voice channel themselves - otherwise JoinCommand
+       already told them so, and no voice connection is coming. */
+    dpp::guild* guild = dpp::find_guild(event.command.guild_id);
+    if (!guild || guild->voice_members.find(event.command.get_issuing_user().id) == guild->voice_members.end()) {
+        return;
+    }
 
-    // A previous session's threads may still be decoding the old song (they
-    // used to outlive /leave); stop and join them, then discard whatever DPP
-    // still has queued, so old packets can't mix into the new song.
+    dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
+    if (currentVoiceChannel && currentVoiceChannel->voiceclient && currentVoiceChannel->voiceclient->is_ready()) {
+        // Already connected - start right away. voiceconn owns the client
+        // as a unique_ptr; we pass the raw pointer through.
+        startPlayback(currentVoiceChannel->voiceclient.get(), yturl, event);
+        return;
+    }
+
+    // connect_member_voice is asynchronous and the handshake is still in
+    // flight; park the request, onVoiceReady starts it once the connection
+    // can accept audio. (This replaces the old Sleep(3000).)
+    std::lock_guard<std::mutex> lock(pendingMutex);
+    pendingUrl = yturl;
+    pendingGuildId = event.command.guild_id;
+    pendingEvent = std::make_unique<dpp::slashcommand_t>(event);
+}
+
+void PlayCommand::onVoiceReady(const dpp::voice_ready_t &event)
+{
+    std::unique_ptr<dpp::slashcommand_t> requestEvent;
+    std::string url;
+    {
+        std::lock_guard<std::mutex> lock(pendingMutex);
+        if (!pendingEvent || !event.voice_client || event.voice_client->server_id != pendingGuildId) {
+            return;
+        }
+        url = std::move(pendingUrl);
+        requestEvent = std::move(pendingEvent);
+    }
+    // pendingMutex is released here on purpose: startPlayback -> stopPlayback
+    // takes it again to clear stale requests.
+    startPlayback(event.voice_client, url, *requestEvent);
+}
+
+void PlayCommand::startPlayback(dpp::discord_voice_client *voiceClient, const std::string &url, const dpp::slashcommand_t &event)
+{
+    // A previous session's threads may still be decoding the old song; stop
+    // and join them, then discard whatever DPP still has queued, so old
+    // packets can't mix into the new song.
     stopPlayback();
-    currentVoiceChannel->voiceclient->stop_audio();
+    voiceClient->stop_audio();
 
     // Reset leftovers from a previous play, otherwise streamAudio sees
     // decodingFinished == true and exits immediately. isPlaying must be set
@@ -104,11 +135,11 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
         decodingFinished = false;
         audioQueue = {};
     }
-    requestedUrl = yturl;
+    requestedUrl = url;
     isPlaying = true;
 
     resamplingThread = std::thread(&PlayCommand::pcmResample, this, event);
-    audioThread = std::thread(&PlayCommand::streamAudio, this, currentVoiceChannel);
+    audioThread = std::thread(&PlayCommand::streamAudio, this, voiceClient);
 }
 
 std::string PlayCommand::name()
@@ -129,6 +160,13 @@ void PlayCommand::stopSendingData()
 
 void PlayCommand::stopPlayback()
 {
+    // Forget any /play still waiting for its voice connection.
+    {
+        std::lock_guard<std::mutex> lock(pendingMutex);
+        pendingEvent.reset();
+        pendingUrl.clear();
+    }
+
     stopSendingData();
 
     // Join instead of abandoning the threads: a detached decoder outlives
@@ -142,8 +180,15 @@ void PlayCommand::stopPlayback()
     }
 }
 
-void PlayCommand::streamAudio(dpp::voiceconn *vc)
+void PlayCommand::streamAudio(dpp::discord_voice_client *voiceClient)
 {
+    // Everything handed to DPP is opus-encoded and (with DAVE E2EE, the
+    // default) encrypted with the *current* group key immediately. The key
+    // rotates whenever someone joins or leaves, turning any large queued
+    // backlog into silence for the listeners - so keep DPP's queue short
+    // and hold the deep buffer here as PCM, which no rekey can spoil.
+    const float MAX_BUFFERED_SECONDS = 1.0f;
+
     // The decoder fills the queue with ready-to-send packets of exactly
     // dpp::send_audio_raw_max_length bytes; only the final one may be shorter.
     while (isPlaying) {
@@ -161,7 +206,17 @@ void PlayCommand::streamAudio(dpp::voiceconn *vc)
             audioQueue.pop();
         }
 
-        vc->voiceclient->send_audio_raw((uint16_t*)packet.data(), packet.size());
+        {
+            std::unique_lock<std::mutex> lock(queueMutex);
+            while (isPlaying && voiceClient->get_secs_remaining() > MAX_BUFFERED_SECONDS) {
+                queueCv.wait_for(lock, std::chrono::milliseconds(100), [this] {
+                    return !isPlaying;
+                });
+            }
+        }
+        if (!isPlaying) break;
+
+        voiceClient->send_audio_raw((uint16_t*)packet.data(), packet.size());
     }
 
     isPlaying = false;
@@ -197,6 +252,7 @@ void PlayCommand::pcmResample(dpp::slashcommand_t event)
     av_dict_set(&options, "multiple_requests", "1", 0);
     AVFormatContext *format = nullptr;
     int errorCode = avformat_open_input(&format, directUrl.c_str(), nullptr, &options);
+    av_dict_free(&options); // open_input consumed what it needed
 
     if (errorCode != 0) {
         char errbuf[256];
@@ -329,6 +385,12 @@ void PlayCommand::pcmResample(dpp::slashcommand_t event)
         }
         queueCv.notify_one();
     }
+
+    av_packet_free(&packet);
+    av_frame_free(&frame);
+    swr_free(&swr);
+    avcodec_free_context(&codec_ctx);
+    avformat_close_input(&format);
 
     signalFinished();
 }
