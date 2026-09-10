@@ -1,7 +1,9 @@
 #include "PlayCommand.h"
+#include "WindowsProcessRunner.h"
 
 #include <dpp/dpp.h>
 #include <QDebug>
+#include <cctype>
 
 extern "C" {
 #include <libavutil/frame.h>
@@ -23,6 +25,42 @@ PlayCommand::~PlayCommand()
     stopPlayback();
 }
 
+// User input ends up on a yt-dlp command line; allow only plain YouTube
+// links so nothing can break out of the quotes or inject extra arguments.
+static bool isAllowedYoutubeUrl(const std::string &url)
+{
+    static const char* allowedPrefixes[] = {
+        "https://www.youtube.com/",
+        "https://youtube.com/",
+        "https://m.youtube.com/",
+        "https://music.youtube.com/",
+        "https://youtu.be/",
+    };
+
+    if (url.empty() || url.size() > 250) {
+        return false;
+    }
+
+    bool prefixOk = false;
+    for (const char* prefix : allowedPrefixes) {
+        if (url.rfind(prefix, 0) == 0) {
+            prefixOk = true;
+            break;
+        }
+    }
+    if (!prefixOk) {
+        return false;
+    }
+
+    const std::string allowedSpecialChars = "-_.~:/?=&%+@";
+    for (char c : url) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && allowedSpecialChars.find(c) == std::string::npos) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void PlayCommand::execute(const dpp::slashcommand_t &event)
 {
     JoinCommand::execute(event);
@@ -34,6 +72,19 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
     /* If the voice channel was invalid, or there is an issue with it, then tell the user. */
     if (!currentVoiceChannel || !currentVoiceChannel->voiceclient || !currentVoiceChannel->voiceclient->is_ready()) {
         event.reply("There was an issue with getting the voice channel. Make sure I'm in a voice channel!");
+        return;
+    }
+
+    // JoinCommand already acknowledged the interaction, so any feedback from
+    // here on goes through edit_original_response.
+    std::string yturl;
+    auto urlParameter = event.get_parameter("url");
+    if (std::holds_alternative<std::string>(urlParameter)) {
+        yturl = std::get<std::string>(urlParameter);
+    }
+
+    if (!isAllowedYoutubeUrl(yturl)) {
+        event.edit_original_response(dpp::message("That doesn't look like a YouTube link I can play!"));
         return;
     }
 
@@ -53,13 +104,11 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
         decodingFinished = false;
         audioQueue = {};
     }
+    requestedUrl = yturl;
     isPlaying = true;
 
-    resamplingThread = std::thread(&PlayCommand::pcmResample, this);
+    resamplingThread = std::thread(&PlayCommand::pcmResample, this, event);
     audioThread = std::thread(&PlayCommand::streamAudio, this, currentVoiceChannel);
-
-    // Stream audio in a separate thread
-    event.reply("Played music.");
 }
 
 std::string PlayCommand::name()
@@ -118,8 +167,25 @@ void PlayCommand::streamAudio(dpp::voiceconn *vc)
     isPlaying = false;
 }
 
-void PlayCommand::pcmResample()
+void PlayCommand::pcmResample(dpp::slashcommand_t event)
 {
+    // Whatever happens here, the sender thread waits on the queue and must
+    // be released - every exit path has to mark decoding as finished.
+    auto signalFinished = [this]() {
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            decodingFinished = true;
+        }
+        queueCv.notify_one();
+    };
+
+    std::string directUrl = WindowsProcessRunner::resolveDirectUrl(requestedUrl);
+    if (directUrl.empty()) {
+        event.edit_original_response(dpp::message("Couldn't get the audio from that link :("));
+        signalFinished();
+        return;
+    }
+
     AVDictionary *options = nullptr;
     av_dict_set(&options, "headers",
                 "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n",
@@ -130,26 +196,36 @@ void PlayCommand::pcmResample()
     av_dict_set(&options, "reconnect_delay_max", "5", 0);
     av_dict_set(&options, "multiple_requests", "1", 0);
     AVFormatContext *format = nullptr;
-    int errorCode = avformat_open_input(&format, "https://rr1---sn-cxn3pqhxqp5-3g3e.googlevideo.com/videoplayback?expire=1789081720&ei=GOSiav7cBvq477MPw8OYuQ0&ip=109.95.112.195&id=o-AJlNmP1bz4Z30wbPAhdzHX_DSffEOsT7hGjSvXAU9vkM&itag=251&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=475&met=1789060120%2C&mh=6O&mm=18%2C29&mn=sn-cxn3pqhxqp5-3g3e%2Csn-f5f7kn7e&ms=aub%2Crdu&mv=m&mvi=1&pl=21&rms=aub%2Caub&initcwndbps=3046250&bui=AR3QkAn9MvlF5pKgYbUYjN5hA-YB5htsgpWhFp50C2MYc1aZphdRFxuCb3fQVOZ8kKb5I-Imclqa6CgG&spc=I-rgIfGoYo72cyedgweyoDzu4zAKRxsVOONyY-0wz7VIRR7nIKxfrG4JhA&vprv=1&svpuc=1&mime=audio%2Fwebm&rqh=1&gir=yes&clen=64496663&dur=3885.741&lmt=1779841546110582&mt=1789059659&fvip=3&keepalive=yes&fexp=51565116%2C52135441%2C52178456&c=VISIONOS&txp=4432534&sparams=expire%2Cei%2Cip%2Cid%2Citag%2Csource%2Crequiressl%2Cxpc%2Cbui%2Cspc%2Cvprv%2Csvpuc%2Cmime%2Crqh%2Cgir%2Cclen%2Cdur%2Clmt&sig=AE0s2JYwRQIhAMPxI3SiyyxmaRS3zSMq9uqPbPq4Sy5c9Mr3N8N4e4KxAiAPE2tOuyHvMCO9-KaTmdbEjpRpAAprd9sGTlylMLfI6Q%3D%3D&lsparams=cps%2Cmet%2Cmh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Crms%2Cinitcwndbps&lsig=APaTxxMwRgIhAI-myvsYzPoO3JGP9kMSQkHj8br4joxNvhU0U6r42DQZAiEAs8oyxHTnGGVpKVIRvKU9WgaAagJRfeMgP1Wo-rk-kjM%3D", nullptr, &options);
-
-    if (errorCode < 0) {
-        char errbuf[256];
-        av_strerror(errorCode, errbuf, sizeof(errbuf));
-        std::cerr << "avformat_open_input failed: " << errbuf << " (code: " << errorCode << ")\n";
-    }
+    int errorCode = avformat_open_input(&format, directUrl.c_str(), nullptr, &options);
 
     if (errorCode != 0) {
-        qDebug() << "Cannot open file! avformat_open_input returned with " << errorCode;
+        char errbuf[256];
+        av_strerror(errorCode, errbuf, sizeof(errbuf));
+        qDebug() << "Cannot open input! avformat_open_input returned with " << errorCode << errbuf;
+        event.edit_original_response(dpp::message("Couldn't open the audio stream :("));
+        signalFinished();
+        return;
     }
+
     errorCode = avformat_find_stream_info(format, nullptr);
     if (errorCode != 0) {
         qDebug() << "Cannot find stream info! avformat_find_stream_info returned with " << errorCode;
+        avformat_close_input(&format);
+        event.edit_original_response(dpp::message("Couldn't read the audio stream :("));
+        signalFinished();
+        return;
     }
 
     int audioStream = av_find_best_stream(format, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (audioStream < 0) {
         qDebug() << "Couldn't find audio stream! av_find_best_stream returned with " << audioStream;
+        avformat_close_input(&format);
+        event.edit_original_response(dpp::message("That link has no audio stream :("));
+        signalFinished();
+        return;
     }
+
+    event.edit_original_response(dpp::message("Playing!"));
 
     const AVCodec *codec = avcodec_find_decoder(format->streams[audioStream]->codecpar->codec_id);
     AVCodecContext* codec_ctx = avcodec_alloc_context3(codec);
@@ -254,9 +330,5 @@ void PlayCommand::pcmResample()
         queueCv.notify_one();
     }
 
-    {
-        std::lock_guard<std::mutex> lock(queueMutex);
-        decodingFinished = true;
-    }
-    queueCv.notify_one();
+    signalFinished();
 }

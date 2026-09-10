@@ -22,7 +22,7 @@ void CommandHandler::prepare()
     commands.push_back(std::make_unique<JoinCommand>("join", "joins channel where the user's in"));
 
     // NEED TO RETHINK WHOLE ARCHITECTURE HERE...
-    std::unique_ptr<ICommand> playCommand = std::make_unique<PlayCommand>("play", "play chosen song, provide with the name");
+    std::unique_ptr<ICommand> playCommand = std::make_unique<PlayCommand>("play", "plays audio from the given youtube link");
     std::unique_ptr<ICommand> leaveCommand = std::make_unique<LeaveCommand>("leave");
     std::unique_ptr<ICommand> stopCommand = std::make_unique<StopCommand>("stop");
 
@@ -58,7 +58,11 @@ void CommandHandler::prepare()
             if (dpp::run_once<struct register_bot_commands>()) {
                 for (const auto &cmd: commands)
                 {
-                    bot->global_command_create(dpp::slashcommand(cmd->name(), cmd->getReply(), bot->me.id));
+                    dpp::slashcommand slashCmd(cmd->name(), cmd->getReply(), bot->me.id);
+                    if (dynamic_cast<PlayCommand*>(cmd.get())) {
+                        slashCmd.add_option(dpp::command_option(dpp::co_string, "url", "YouTube video link", true));
+                    }
+                    bot->global_command_create(slashCmd);
                 }
             }
         });

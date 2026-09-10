@@ -27,7 +27,7 @@ public:
 private:
     Mp3Encoder encoder;
     void streamAudio(dpp::voiceconn* vc);
-    void pcmResample();
+    void pcmResample(dpp::slashcommand_t event);
 
     std::atomic<bool> isPlaying{false};
 
@@ -35,6 +35,7 @@ private:
     std::thread resamplingThread;
 
 
+    std::string requestedUrl;
     std::queue<std::vector<uint8_t>> audioQueue;
     std::mutex queueMutex;
     std::condition_variable queueCv;

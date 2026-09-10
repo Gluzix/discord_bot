@@ -48,6 +48,7 @@ add_executable(discord_bot
   Handler.h Handler.cpp
 )
 
+target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Encoders")
 target_include_directories(discord_bot PRIVATE
