@@ -10,5 +10,15 @@ JoinCommand::JoinCommand()
 
 void JoinCommand::execute(const dpp::slashcommand_t &event)
 {
-    VoiceConnector::ensureJoined(event);
+    switch (VoiceConnector::ensureJoined(event)) {
+    case VoiceConnector::Result::Joined:
+        event.reply("Joined your channel!");
+        break;
+    case VoiceConnector::Result::AlreadyInChannel:
+        event.reply("Don't need to join your channel as i'm already there with you!");
+        break;
+    case VoiceConnector::Result::UserNotInVoice:
+        event.reply("You don't seem to be in a voice channel!");
+        break;
+    }
 }

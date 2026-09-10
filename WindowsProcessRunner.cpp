@@ -1,5 +1,6 @@
 #include "WindowsProcessRunner.h"
 #include <QDebug>
+#include <vector>
 
 WindowsProcessRunner::WindowsProcessRunner(const std::string &url, HANDLE &outReadHandle)
     : mUrl(url)
@@ -42,7 +43,7 @@ void WindowsProcessRunner::launchYtDlp()
     CloseHandle(processInfo.hThread);
 }
 
-std::string WindowsProcessRunner::resolveDirectUrl(const std::string &youtubeUrl)
+ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &youtubeUrl)
 {
     SECURITY_ATTRIBUTES secAttr{};
     secAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -62,7 +63,9 @@ std::string WindowsProcessRunner::resolveDirectUrl(const std::string &youtubeUrl
     startupInfo.hStdOutput = writePipe;
     startupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
 
-    const std::string args = " --no-playlist --no-warnings --socket-timeout 10 -f bestaudio -g \"" + youtubeUrl + "\"";
+    // Two --print fields make yt-dlp emit the title on the first line and
+    // the direct media URL on the next, in one process.
+    const std::string args = " --no-playlist --no-warnings --socket-timeout 10 -f bestaudio --print title --print urls \"" + youtubeUrl + "\"";
 
     PROCESS_INFORMATION processInfo{};
     std::string commandToRun = "yt-dlp" + args;
@@ -94,13 +97,32 @@ std::string WindowsProcessRunner::resolveDirectUrl(const std::string &youtubeUrl
     CloseHandle(processInfo.hProcess);
     CloseHandle(processInfo.hThread);
 
-    // First stdout line is the direct media URL.
-    size_t eol = output.find_first_of("\r\n");
-    std::string url = (eol == std::string::npos) ? output : output.substr(0, eol);
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start < output.size()) {
+        size_t eol = output.find('\n', start);
+        if (eol == std::string::npos) {
+            eol = output.size();
+        }
+        std::string line = output.substr(start, eol - start);
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (!line.empty()) {
+            lines.push_back(line);
+        }
+        start = eol + 1;
+    }
 
-    if (exitCode != 0 || url.rfind("http", 0) != 0) {
+    ResolvedMedia media;
+    if (exitCode != 0 || lines.empty() || lines.back().rfind("http", 0) != 0) {
         qDebug() << "yt-dlp did not return a usable URL, exit code:" << exitCode;
         return {};
     }
-    return url;
+
+    media.directUrl = lines.back();
+    if (lines.size() >= 2) {
+        media.title = lines.front();
+    }
+    return media;
 }

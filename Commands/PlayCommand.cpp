@@ -56,12 +56,14 @@ dpp::slashcommand PlayCommand::definition(dpp::snowflake botId) const
 
 void PlayCommand::execute(const dpp::slashcommand_t &event)
 {
-    // Acknowledges the interaction in every branch; any feedback from here
-    // on goes through edit_original_response. Returns false when the user
-    // isn't in a voice channel, i.e. no voice connection is coming.
-    if (!VoiceConnector::ensureJoined(event)) {
+    if (VoiceConnector::ensureJoined(event) == VoiceConnector::Result::UserNotInVoice) {
+        event.reply("You don't seem to be in a voice channel!");
         return;
     }
+
+    // The interaction's one response slot: ack with a placeholder that the
+    // pipeline later edits into "Playing: <title>" or an error message.
+    event.reply("Looking for your song...");
 
     std::string yturl;
     auto urlParameter = event.get_parameter("url");

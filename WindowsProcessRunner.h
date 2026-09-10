@@ -8,15 +8,21 @@
 
 #pragma once
 
+struct ResolvedMedia
+{
+    std::string title;
+    std::string directUrl; // empty on failure
+};
+
 class WindowsProcessRunner
 {
 public:
     WindowsProcessRunner(const std::string &url, HANDLE& outReadHandle);
     void launchYtDlp(); //virtual or template?
 
-    // Runs "yt-dlp -g <url>" and returns the direct media URL it prints,
-    // or an empty string on failure.
-    static std::string resolveDirectUrl(const std::string &youtubeUrl);
+    // Runs yt-dlp once to resolve both the video title and the direct media
+    // URL. directUrl is empty on failure.
+    static ResolvedMedia resolveMedia(const std::string &youtubeUrl);
 
 private:
     std::string mUrl;

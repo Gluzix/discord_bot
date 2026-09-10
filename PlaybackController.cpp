@@ -158,12 +158,14 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         queueCv.notify_one();
     };
 
-    std::string directUrl = WindowsProcessRunner::resolveDirectUrl(requestedUrl);
-    if (directUrl.empty()) {
+    ResolvedMedia media = WindowsProcessRunner::resolveMedia(requestedUrl);
+    if (media.directUrl.empty()) {
         event.edit_original_response(dpp::message("Couldn't get the audio from that link :("));
         signalFinished();
         return;
     }
+
+    std::string directUrl = media.directUrl;
 
     AVDictionary *options = nullptr;
     av_dict_set(&options, "headers",
@@ -205,7 +207,11 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         return;
     }
 
-    event.edit_original_response(dpp::message("Playing!"));
+    // The title is untrusted input from the video page - disable every kind
+    // of mention so a title like "@everyone" can't ping the server.
+    dpp::message nowPlaying(media.title.empty() ? "Playing!" : "Playing: **" + media.title + "**");
+    nowPlaying.set_allowed_mentions();
+    event.edit_original_response(nowPlaying);
 
     const AVCodec *codec = avcodec_find_decoder(format->streams[audioStream]->codecpar->codec_id);
     AVCodecContext* codec_ctx = avcodec_alloc_context3(codec);
