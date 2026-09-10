@@ -25,8 +25,10 @@ void CommandHandler::prepare()
     std::unique_ptr<ICommand> playCommand = std::make_unique<PlayCommand>("play", "play chosen song, provide with the name");
     std::unique_ptr<ICommand> leaveCommand = std::make_unique<LeaveCommand>("leave");
 
-    dynamic_cast<LeaveCommand*>(leaveCommand.get())->setStopPlayingFunction([&playCommand](){
-        auto playCommandPtr = dynamic_cast<PlayCommand*>(playCommand.get());
+    // Capture the raw pointer, not the local unique_ptr: the unique_ptr is
+    // moved into `commands` below and the local dies when prepare() returns.
+    PlayCommand* playCommandPtr = dynamic_cast<PlayCommand*>(playCommand.get());
+    dynamic_cast<LeaveCommand*>(leaveCommand.get())->setStopPlayingFunction([playCommandPtr](){
         if (playCommandPtr)
             playCommandPtr->stopSendingData();
     });

@@ -34,6 +34,14 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
 
     // encoder.openFile();
 
+    // Reset leftovers from a previous play, otherwise streamAudio sees
+    // decodingFinished == true and exits immediately.
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        decodingFinished = false;
+        audioQueue = {};
+    }
+
     resamplingThread = std::thread(&PlayCommand::pcmResample, this);
     resamplingThread.detach();
 
@@ -57,58 +65,31 @@ std::string PlayCommand::getReply()
 void PlayCommand::stopSendingData()
 {
     isPlaying = false;
+    queueCv.notify_all();
 }
-
-std::vector<uint8_t> accumulator;
 
 void PlayCommand::streamAudio(dpp::voiceconn *vc)
 {
-    const int CHUNK_SIZE = 384000; // 2s of data
-    const int FOUR_BYTE_ALIGNMENT = 4;
-    size_t readOffset = 0;
     isPlaying = true;
 
+    // The decoder fills the queue with ready-to-send packets of exactly
+    // dpp::send_audio_raw_max_length bytes; only the final one may be shorter.
     while (isPlaying) {
-        std::vector<uint8_t> chunk;
+        std::vector<uint8_t> packet;
         {
             std::unique_lock<std::mutex> lock(queueMutex);
             queueCv.wait(lock, [this] {
-                return !audioQueue.empty() || decodingFinished;
+                return !audioQueue.empty() || decodingFinished || !isPlaying;
             });
-            if (audioQueue.empty() && decodingFinished && accumulator.size() < CHUNK_SIZE) break;
-
-            if (!audioQueue.empty()) {
-                chunk = std::move(audioQueue.front());
-                audioQueue.pop();
+            if (audioQueue.empty()) {
+                if (decodingFinished) break;
+                continue;
             }
+            packet = std::move(audioQueue.front());
+            audioQueue.pop();
         }
 
-        accumulator.insert(accumulator.end(), chunk.begin(), chunk.end());
-
-        while (accumulator.size() - readOffset >= CHUNK_SIZE) {
-            qDebug() << "Sending chunk... of size: " << accumulator.size();
-            vc->voiceclient->send_audio_raw((uint16_t*)(accumulator.data() + readOffset), CHUNK_SIZE);
-            readOffset += CHUNK_SIZE;
-        }
-
-        if (readOffset > CHUNK_SIZE * 4) {
-            accumulator.erase(accumulator.begin(), accumulator.begin() + readOffset);
-            readOffset = 0;
-        }
-    }
-
-    size_t remaining = accumulator.size() - readOffset;
-    if (remaining > 0) {
-        size_t alignedSize = remaining - (remaining % FOUR_BYTE_ALIGNMENT);
-        if (alignedSize > 0) {
-            vc->voiceclient->send_audio_raw((uint16_t*)(accumulator.data() + readOffset), alignedSize);
-        }
-    }
-
-    // Send a brief silence to cleanly stop instead of cutting off abruptly
-    if (!isPlaying) {
-        std::vector<uint8_t> silence(CHUNK_SIZE, 0);
-        vc->voiceclient->send_audio_raw((uint16_t*)silence.data(), CHUNK_SIZE);
+        vc->voiceclient->send_audio_raw((uint16_t*)packet.data(), packet.size());
     }
 
     isPlaying = false;
@@ -116,8 +97,6 @@ void PlayCommand::streamAudio(dpp::voiceconn *vc)
 
 void PlayCommand::pcmResample()
 {
-    pcmData.clear();
-
     AVDictionary *options = nullptr;
     av_dict_set(&options, "headers",
                 "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n",
@@ -128,7 +107,7 @@ void PlayCommand::pcmResample()
     av_dict_set(&options, "reconnect_delay_max", "5", 0);
     av_dict_set(&options, "multiple_requests", "1", 0);
     AVFormatContext *format = nullptr;
-    int errorCode = avformat_open_input(&format, "https://rr2---sn-cxn3pqhxqp5-3g3l.googlevideo.com/videoplayback?expire=1785208850&ei=sstnav7jGtifgMMPvfu7iAU&ip=109.95.112.195&id=o-AEbhyuLR_XL0QtGjHNLcP3c3Epnn3uU5PMivxXoF9vJs&itag=251&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=978&met=1785187250%2C&mh=zj&mm=31%2C29&mn=sn-cxn3pqhxqp5-3g3l%2Csn-f5f7knee&ms=au%2Crdu&mv=m&mvi=2&pl=21&rms=au%2Cau&initcwndbps=3170000&bui=AZFlqhM6KI6gp-HSkMmHDll7zZpOiYQd_rF36HCvYorQxWeWsI1EbHn5GTLKI2Zh_LKVBdnpUJASHpLz&spc=SQ-umgISYibHWDY-Z5SELG02NWw5MrqsKhjrNgiEMRjR&vprv=1&svpuc=1&mime=audio%2Fwebm&rqh=1&gir=yes&clen=174757070&dur=10821.781&lmt=1711912343475561&mt=1785186801&fvip=5&keepalive=yes&fexp=51565115%2C51992868&c=ANDROID_VR&txp=1308224&sparams=expire%2Cei%2Cip%2Cid%2Citag%2Csource%2Crequiressl%2Cxpc%2Cbui%2Cspc%2Cvprv%2Csvpuc%2Cmime%2Crqh%2Cgir%2Cclen%2Cdur%2Clmt&sig=AE0s2JYwRgIhAKEtdNcZ0SzQQaErCS-3HuVi-qB2pT0uJ85X6NXuX9kyAiEA2KFrVARK4WPdKOK8PEYnER-tMbr4NPWyHwL-yGSJkMc%3D&lsparams=cps%2Cmet%2Cmh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Crms%2Cinitcwndbps&lsig=APaTxxMwRgIhAJfghnYWnm1uwA9f28Wi3PLrc3SCmog1ohcObreEaiOdAiEArRtqKdiKGe8lZRVcndF7LFCc-sqHibek3FqStDlZIqg%3D", nullptr, &options);
+    int errorCode = avformat_open_input(&format, "https://rr1---sn-cxn3pqhxqp5-3g3e.googlevideo.com/videoplayback?expire=1789081720&ei=GOSiav7cBvq477MPw8OYuQ0&ip=109.95.112.195&id=o-AJlNmP1bz4Z30wbPAhdzHX_DSffEOsT7hGjSvXAU9vkM&itag=251&source=youtube&requiressl=yes&xpc=EgVo2aDSNQ%3D%3D&cps=475&met=1789060120%2C&mh=6O&mm=18%2C29&mn=sn-cxn3pqhxqp5-3g3e%2Csn-f5f7kn7e&ms=aub%2Crdu&mv=m&mvi=1&pl=21&rms=aub%2Caub&initcwndbps=3046250&bui=AR3QkAn9MvlF5pKgYbUYjN5hA-YB5htsgpWhFp50C2MYc1aZphdRFxuCb3fQVOZ8kKb5I-Imclqa6CgG&spc=I-rgIfGoYo72cyedgweyoDzu4zAKRxsVOONyY-0wz7VIRR7nIKxfrG4JhA&vprv=1&svpuc=1&mime=audio%2Fwebm&rqh=1&gir=yes&clen=64496663&dur=3885.741&lmt=1779841546110582&mt=1789059659&fvip=3&keepalive=yes&fexp=51565116%2C52135441%2C52178456&c=VISIONOS&txp=4432534&sparams=expire%2Cei%2Cip%2Cid%2Citag%2Csource%2Crequiressl%2Cxpc%2Cbui%2Cspc%2Cvprv%2Csvpuc%2Cmime%2Crqh%2Cgir%2Cclen%2Cdur%2Clmt&sig=AE0s2JYwRQIhAMPxI3SiyyxmaRS3zSMq9uqPbPq4Sy5c9Mr3N8N4e4KxAiAPE2tOuyHvMCO9-KaTmdbEjpRpAAprd9sGTlylMLfI6Q%3D%3D&lsparams=cps%2Cmet%2Cmh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Crms%2Cinitcwndbps&lsig=APaTxxMwRgIhAI-myvsYzPoO3JGP9kMSQkHj8br4joxNvhU0U6r42DQZAiEAs8oyxHTnGGVpKVIRvKU9WgaAagJRfeMgP1Wo-rk-kjM%3D", nullptr, &options);
 
     if (errorCode < 0) {
         char errbuf[256];
@@ -172,11 +151,42 @@ void PlayCommand::pcmResample()
     AVPacket *packet = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
 
+    // The queue carries ready-to-send packets of exactly PACKET_SIZE bytes.
+    // DPP drops the remainder of larger sends and silence-pads smaller ones,
+    // so the invariant is enforced here, at the single point of production.
+    const size_t PACKET_SIZE = dpp::send_audio_raw_max_length;
+    const size_t BYTES_PER_SAMPLE_PAIR = 4; // s16 stereo
+    std::vector<uint8_t> staging;
+
+    auto convertIntoStaging = [&](const uint8_t **inData, int inSamples) {
+        int maxOutSamples = swr_get_out_samples(swr, inSamples);
+        if (maxOutSamples <= 0) return;
+        size_t writePos = staging.size();
+        staging.resize(writePos + (size_t)maxOutSamples * BYTES_PER_SAMPLE_PAIR);
+        uint8_t *outPlane = staging.data() + writePos;
+        int converted = swr_convert(swr, &outPlane, maxOutSamples, inData, inSamples);
+        staging.resize(writePos + (converted > 0 ? (size_t)converted * BYTES_PER_SAMPLE_PAIR : 0));
+    };
+
+    auto pushFullPackets = [&]() {
+        size_t readPos = 0;
+        while (staging.size() - readPos >= PACKET_SIZE) {
+            std::vector<uint8_t> pkt(staging.begin() + readPos,
+                                     staging.begin() + readPos + PACKET_SIZE);
+            {
+                std::lock_guard<std::mutex> lock(queueMutex);
+                audioQueue.push(std::move(pkt));
+            }
+            queueCv.notify_one();
+            readPos += PACKET_SIZE;
+        }
+        staging.erase(staging.begin(), staging.begin() + readPos);
+    };
+
     auto readTime = std::chrono::steady_clock::duration::zero();
     auto decodeTime = std::chrono::steady_clock::duration::zero();
 
-    while(true/*av_read_frame(format, packet) >= 0*/) {
-
+    while (true) {
         auto t0 = std::chrono::steady_clock::now();
         int ret = av_read_frame(format, packet);
         auto t1 = std::chrono::steady_clock::now();
@@ -184,7 +194,7 @@ void PlayCommand::pcmResample()
 
         if (ret < 0) break;
 
-        if(packet->stream_index != audioStream) {
+        if (packet->stream_index != audioStream) {
             av_packet_unref(packet);
             continue;
         }
@@ -195,69 +205,30 @@ void PlayCommand::pcmResample()
             continue;
         }
 
-        int maxOutSamples = swr_get_out_samples(swr, codec_ctx->frame_size > 0 ? codec_ctx->frame_size : 4096);
-        int maxBufSize = av_samples_get_buffer_size(nullptr, 2, maxOutSamples, AV_SAMPLE_FMT_S16, 1);
-        uint8_t *out_buf = (uint8_t*)av_malloc(maxBufSize * 2); // some headroom
-
         while (avcodec_receive_frame(codec_ctx, frame) >= 0) {
-            int out_samples = swr_get_out_samples(swr, frame->nb_samples);
-
-            int out_buf_size = av_samples_get_buffer_size(nullptr, 2, out_samples, AV_SAMPLE_FMT_S16, 1);
-            if (out_buf_size > maxBufSize) {
-                av_free(out_buf);
-                out_buf = (uint8_t*)av_malloc(out_buf_size);
-            }
-
-            int samples_converted = swr_convert(
-                swr,
-                &out_buf,
-                out_samples,
-                (const uint8_t**)frame->data,
-                frame->nb_samples
-                );
-
-            if (samples_converted > 0) {
-                int actual_size = av_samples_get_buffer_size(nullptr, 2, samples_converted, AV_SAMPLE_FMT_S16,1);
-
-                std::vector<uint8_t> chunk(out_buf, out_buf + actual_size);
-                {
-                    std::lock_guard<std::mutex> lock(queueMutex);
-                    audioQueue.push(std::move(chunk));
-                }
-                queueCv.notify_one();
-            }
-            // av_free(out_buf);
+            convertIntoStaging((const uint8_t**)frame->data, frame->nb_samples);
+            pushFullPackets();
             av_frame_unref(frame);
         }
         auto t3 = std::chrono::steady_clock::now();
         decodeTime += (t3 - t2);
 
-        qDebug() << "Total read (network) time: " << std::chrono::duration_cast<std::chrono::milliseconds>(readTime).count() << "ms";
-        qDebug() << "Total decode/resample time: " << std::chrono::duration_cast<std::chrono::milliseconds>(decodeTime).count() << "ms";
-
-        av_free(out_buf);
-
         av_packet_unref(packet);
     }
 
-    uint8_t *out_buf = nullptr;
-    int remaining = swr_get_out_samples(swr, 0);
-    if (remaining > 0) {
-        int out_buf_size = av_samples_get_buffer_size(nullptr, 2, remaining, AV_SAMPLE_FMT_S16, 1);
-        out_buf = (uint8_t*)av_malloc(out_buf_size);
+    qDebug() << "Total read (network) time: " << std::chrono::duration_cast<std::chrono::milliseconds>(readTime).count() << "ms";
+    qDebug() << "Total decode/resample time: " << std::chrono::duration_cast<std::chrono::milliseconds>(decodeTime).count() << "ms";
 
-        int flushed = swr_convert(swr, &out_buf, remaining, nullptr, 0);
-        if (flushed >0) {
-            int actual_size = av_samples_get_buffer_size(nullptr, 2, flushed, AV_SAMPLE_FMT_S16, 1);
-
-            std::vector<uint8_t> chunk(out_buf, out_buf + actual_size);
-            {
-                std::lock_guard<std::mutex> lock(queueMutex);
-                audioQueue.push(std::move(chunk));
-            }
-            queueCv.notify_one();
+    // Drain the resampler; only this last packet may be shorter than
+    // PACKET_SIZE — DPP silence-pads it, inaudible at end of stream.
+    convertIntoStaging(nullptr, 0);
+    pushFullPackets();
+    if (!staging.empty()) {
+        {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            audioQueue.push(std::move(staging));
         }
-        av_free(out_buf);
+        queueCv.notify_one();
     }
 
     {

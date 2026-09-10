@@ -33,7 +33,6 @@ private:
     std::thread resamplingThread;
 
 
-    std::vector<uint8_t> pcmData{};
     std::queue<std::vector<uint8_t>> audioQueue;
     std::mutex queueMutex;
     std::condition_variable queueCv;
