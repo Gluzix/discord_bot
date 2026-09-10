@@ -39,6 +39,15 @@ void CommandHandler::prepare()
             playback->onVoiceReady(event);
         });
 
+        // If the bot is kicked from a voice channel or the connection drops,
+        // dpp destroys the voice client - stop playback so no thread keeps
+        // sending into a dead client.
+        bot->on_voice_state_update([playback = playback, bot = bot](const dpp::voice_state_update_t& event) {
+            if (event.state.user_id == bot->me.id && event.state.channel_id.empty()) {
+                playback->stop();
+            }
+        });
+
         bot->on_slashcommand([this](const dpp::slashcommand_t& event) {
             auto command = commands.find(event.command.get_command_name());
             if (command != commands.end()) {

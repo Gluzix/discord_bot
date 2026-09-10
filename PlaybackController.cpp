@@ -12,20 +12,38 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-PlaybackController::PlaybackController()
-{
-    workerThread = std::thread(&PlaybackController::playbackWorker, this);
-}
-
 // Queue entries hold the raw yt-dlp target; show searches in a friendlier
-// form until the real title is resolved at play time.
+// form until the real title is resolved. <> around a bare url stops Discord
+// from unfurling an embed preview for it.
 static std::string displayLabelFor(const std::string &target)
 {
     const std::string searchPrefix = "ytsearch1:";
     if (target.rfind(searchPrefix, 0) == 0) {
         return "search: " + target.substr(searchPrefix.size());
     }
+    if (target.rfind("http", 0) == 0) {
+        return "<" + target + ">";
+    }
     return target;
+}
+
+// A resolved song renders as a masked link - the title as clickable text,
+// <> suppressing the embed preview. Unresolved songs fall back to the target.
+static std::string renderLabel(const std::string &title, const std::string &webpageUrl, const std::string &fallbackTarget)
+{
+    if (!title.empty() && !webpageUrl.empty()) {
+        return "[" + title + "](<" + webpageUrl + ">)";
+    }
+    if (!title.empty()) {
+        return title;
+    }
+    return displayLabelFor(fallbackTarget);
+}
+
+PlaybackController::PlaybackController()
+{
+    workerThread = std::thread(&PlaybackController::playbackWorker, this);
+    resolverThread = std::thread(&PlaybackController::resolverWorker, this);
 }
 
 PlaybackController::~PlaybackController()
@@ -40,6 +58,9 @@ PlaybackController::~PlaybackController()
     if (workerThread.joinable()) {
         workerThread.join();
     }
+    if (resolverThread.joinable()) {
+        resolverThread.join();
+    }
 }
 
 size_t PlaybackController::play(const std::string &youtubeUrl, const dpp::slashcommand_t &event)
@@ -51,7 +72,8 @@ size_t PlaybackController::play(const std::string &youtubeUrl, const dpp::slashc
         bool busy = songActive || !songQueue.empty();
 
         Song song;
-        song.youtubeUrl = youtubeUrl;
+        song.id = nextSongId++;
+        song.target = youtubeUrl;
         song.event = std::make_unique<dpp::slashcommand_t>(event);
         songQueue.push_back(std::move(song));
 
@@ -127,7 +149,7 @@ PlaybackController::QueueSnapshot PlaybackController::queueSnapshot()
     std::lock_guard<std::mutex> lock(stateMutex);
     snapshot.current = currentSongLabel;
     for (const Song &song : songQueue) {
-        snapshot.queued.push_back(displayLabelFor(song.youtubeUrl));
+        snapshot.queued.push_back(renderLabel(song.title, song.webpageUrl, song.target));
     }
     return snapshot;
 }
@@ -149,7 +171,7 @@ void PlaybackController::playbackWorker()
             songQueue.pop_front();
             voiceClient = currentVoiceClient;
             songActive = true;
-            currentSongLabel = displayLabelFor(song.youtubeUrl);
+            currentSongLabel = renderLabel(song.title, song.webpageUrl, song.target);
         }
 
         // Blocks until the song ends naturally or is skipped/stopped;
@@ -164,14 +186,104 @@ void PlaybackController::playbackWorker()
     }
 }
 
+// Resolves queued songs ahead of time: titles show up in /queue and the
+// "Queued at position N" replies, and playSong can start a prefetched song
+// without the multi-second yt-dlp pause between tracks.
+void PlaybackController::resolverWorker()
+{
+    while (running) {
+        uint64_t songId = 0;
+        std::string target;
+        {
+            std::unique_lock<std::mutex> lock(stateMutex);
+            stateCv.wait(lock, [this] {
+                if (!running) {
+                    return true;
+                }
+                for (const Song &song : songQueue) {
+                    if (song.directUrl.empty() && !song.resolveFailed) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+            if (!running) {
+                break;
+            }
+            for (const Song &song : songQueue) {
+                if (song.directUrl.empty() && !song.resolveFailed) {
+                    songId = song.id;
+                    target = song.target;
+                    break;
+                }
+            }
+        }
+        if (songId == 0) {
+            continue;
+        }
+
+        ResolvedMedia media = WindowsProcessRunner::resolveMedia(target);
+
+        std::unique_ptr<dpp::slashcommand_t> requestEvent;
+        std::string label;
+        size_t position = 0;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            for (size_t i = 0; i < songQueue.size(); ++i) {
+                Song &song = songQueue[i];
+                if (song.id != songId) {
+                    continue;
+                }
+                if (media.directUrl.empty()) {
+                    // Give up quietly; playSong retries and reports the
+                    // error to the user when the song's turn comes.
+                    song.resolveFailed = true;
+                } else {
+                    song.title = media.title;
+                    song.webpageUrl = media.webpageUrl;
+                    song.directUrl = media.directUrl;
+                    song.resolvedAtSeconds = static_cast<int64_t>(time(nullptr));
+                    label = renderLabel(song.title, song.webpageUrl, song.target);
+                    position = i + 1;
+                    requestEvent = std::make_unique<dpp::slashcommand_t>(*song.event);
+                }
+                break;
+            }
+        }
+
+        // Upgrade the "Queued at position N" reply with what we found.
+        if (requestEvent) {
+            dpp::message queuedInfo("Queued at position " + std::to_string(position) + ": " + label);
+            queuedInfo.set_allowed_mentions();
+            requestEvent->edit_original_response(queuedInfo);
+        }
+    }
+}
+
 void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, Song song)
 {
+    // Shutdown may have happened between popping the song and getting here;
+    // re-arming isPlaying now would make the destructor wait out the song.
+    if (!running) {
+        return;
+    }
+
     {
         std::lock_guard<std::mutex> lock(queueMutex);
         decodingFinished = false;
         audioQueue = {};
     }
-    requestedUrl = song.youtubeUrl;
+    requestedUrl = song.target;
+
+    // Hand the resolver's work to pcmResample when it's still fresh enough;
+    // googlevideo urls are ip-bound and expire after a few hours.
+    const int64_t FRESH_FOR_SECONDS = 3600;
+    bool prefetchIsFresh = !song.directUrl.empty()
+        && (static_cast<int64_t>(time(nullptr)) - song.resolvedAtSeconds) < FRESH_FOR_SECONDS;
+    prefetchedTitle = prefetchIsFresh ? song.title : std::string{};
+    prefetchedWebpageUrl = prefetchIsFresh ? song.webpageUrl : std::string{};
+    prefetchedDirectUrl = prefetchIsFresh ? song.directUrl : std::string{};
+
     isPlaying = true;
 
     resamplingThread = std::thread(&PlaybackController::pcmResample, this, *song.event);
@@ -183,7 +295,12 @@ void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, Song s
 
 void PlaybackController::stopSendingData()
 {
-    isPlaying = false;
+    // isPlaying participates in queueCv wait predicates - flipping it while
+    // holding the mutex guarantees no waiter can miss the wakeup.
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        isPlaying = false;
+    }
     queueCv.notify_all();
 }
 
@@ -241,16 +358,26 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         queueCv.notify_one();
     };
 
-    ResolvedMedia media = WindowsProcessRunner::resolveMedia(requestedUrl);
+    ResolvedMedia media;
+    if (!prefetchedDirectUrl.empty()) {
+        // The resolver thread already did the yt-dlp work while the previous
+        // song was playing - start immediately.
+        media.title = prefetchedTitle;
+        media.webpageUrl = prefetchedWebpageUrl;
+        media.directUrl = prefetchedDirectUrl;
+    } else {
+        media = WindowsProcessRunner::resolveMedia(requestedUrl);
+    }
+
     if (media.directUrl.empty()) {
         event.edit_original_response(dpp::message("Couldn't get the audio from that link :("));
         signalFinished();
         return;
     }
 
-    if (!media.title.empty()) {
+    {
         std::lock_guard<std::mutex> lock(stateMutex);
-        currentSongLabel = media.title;
+        currentSongLabel = renderLabel(media.title, media.webpageUrl, requestedUrl);
     }
 
     std::string directUrl = media.directUrl;
@@ -296,8 +423,9 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     }
 
     // The title is untrusted input from the video page - disable every kind
-    // of mention so a title like "@everyone" can't ping the server.
-    dpp::message nowPlaying(media.title.empty() ? "Playing!" : "Playing: **" + media.title + "**");
+    // of mention so a title like "@everyone" can't ping the server. Rendered
+    // as a masked link: clickable title, no embed preview.
+    dpp::message nowPlaying("Playing: " + renderLabel(media.title, media.webpageUrl, requestedUrl));
     nowPlaying.set_allowed_mentions();
     event.edit_original_response(nowPlaying);
 

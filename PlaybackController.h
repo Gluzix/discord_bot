@@ -55,11 +55,20 @@ public:
 private:
     struct Song
     {
-        std::string youtubeUrl;
+        uint64_t id{0};
+        std::string target; // youtube url or "ytsearch1:<query>"
         std::unique_ptr<dpp::slashcommand_t> event;
+
+        // Filled by the resolver thread ahead of time; empty until then.
+        std::string title;
+        std::string webpageUrl;
+        std::string directUrl;
+        int64_t resolvedAtSeconds{0};
+        bool resolveFailed{false}; // resolver gave up; playSong retries itself
     };
 
     void playbackWorker();
+    void resolverWorker();
     void playSong(dpp::discord_voice_client *voiceClient, Song song);
     void streamAudio(dpp::discord_voice_client *voiceClient);
     void pcmResample(dpp::slashcommand_t event);
@@ -71,15 +80,23 @@ private:
     std::deque<Song> songQueue;
     dpp::discord_voice_client *currentVoiceClient{nullptr};
     bool songActive{false};
-    std::string currentSongLabel; // url, replaced by the title once resolved
+    std::string currentSongLabel; // pre-rendered markdown for /queue
+    uint64_t nextSongId{1};
     std::atomic<bool> running{true};
     std::thread workerThread;
+    std::thread resolverThread;
 
     // Per-song pipeline state.
     std::atomic<bool> isPlaying{false};
     std::thread audioThread;
     std::thread resamplingThread;
     std::string requestedUrl;
+
+    // Hand-off from playSong to pcmResample when the resolver already did
+    // the work; empty means pcmResample resolves on its own.
+    std::string prefetchedTitle;
+    std::string prefetchedWebpageUrl;
+    std::string prefetchedDirectUrl;
     std::queue<std::vector<uint8_t>> audioQueue;
     std::mutex queueMutex;
     std::condition_variable queueCv;

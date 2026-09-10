@@ -121,7 +121,7 @@ ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &target)
     // (cp1250 here), which turns Polish titles into mojibake on Discord.
     // The command line goes through CreateProcessW as UTF-16 - the A variant
     // would mangle non-ASCII search queries through the ANSI code page.
-    const std::string args = " --no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print urls \"" + target + "\"";
+    const std::string args = " --no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print webpage_url --print urls \"" + target + "\"";
 
     PROCESS_INFORMATION processInfo{};
     std::wstring commandToRun = utf8ToWide("yt-dlp" + args);
@@ -176,15 +176,19 @@ ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &target)
         return {};
     }
 
+    // Line order matches the --print flags: title, webpage_url, direct url.
     media.directUrl = lines.back();
-    if (lines.size() >= 2) {
-        media.title = lines.front();
-        // Fallback for a yt-dlp that ignored --encoding utf-8: the title
-        // arrives in the ANSI code page - convert it instead of handing
-        // Discord invalid UTF-8 (which renders as U+FFFD).
-        if (!isValidUtf8(media.title)) {
-            media.title = ansiToUtf8(media.title);
-        }
+    if (lines.size() >= 3) {
+        media.title = lines[0];
+        media.webpageUrl = lines[1];
+    } else if (lines.size() == 2) {
+        media.title = lines[0];
+    }
+    // Fallback for a yt-dlp that ignored --encoding utf-8: the title
+    // arrives in the ANSI code page - convert it instead of handing
+    // Discord invalid UTF-8 (which renders as U+FFFD).
+    if (!media.title.empty() && !isValidUtf8(media.title)) {
+        media.title = ansiToUtf8(media.title);
     }
     return media;
 }

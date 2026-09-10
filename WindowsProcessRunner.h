@@ -11,7 +11,8 @@
 struct ResolvedMedia
 {
     std::string title;
-    std::string directUrl; // empty on failure
+    std::string webpageUrl; // canonical YouTube page (also for search results)
+    std::string directUrl;  // empty on failure
 };
 
 class WindowsProcessRunner
