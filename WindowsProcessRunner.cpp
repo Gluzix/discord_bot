@@ -43,6 +43,47 @@ void WindowsProcessRunner::launchYtDlp()
     CloseHandle(processInfo.hThread);
 }
 
+static bool isValidUtf8(const std::string &text)
+{
+    size_t i = 0;
+    while (i < text.size()) {
+        unsigned char c = text[i];
+        int continuationBytes =
+            (c <= 0x7F) ? 0 :
+            ((c & 0xE0) == 0xC0) ? 1 :
+            ((c & 0xF0) == 0xE0) ? 2 :
+            ((c & 0xF8) == 0xF0) ? 3 : -1;
+        if (continuationBytes < 0 || i + continuationBytes >= text.size()) {
+            return false;
+        }
+        for (int k = 1; k <= continuationBytes; ++k) {
+            if ((text[i + k] & 0xC0) != 0x80) {
+                return false;
+            }
+        }
+        i += continuationBytes + 1;
+    }
+    return true;
+}
+
+static std::string ansiToUtf8(const std::string &text)
+{
+    int wideLen = MultiByteToWideChar(CP_ACP, 0, text.data(), (int)text.size(), nullptr, 0);
+    if (wideLen <= 0) {
+        return text;
+    }
+    std::wstring wide(wideLen, 0);
+    MultiByteToWideChar(CP_ACP, 0, text.data(), (int)text.size(), wide.data(), wideLen);
+
+    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideLen, nullptr, 0, nullptr, nullptr);
+    if (utf8Len <= 0) {
+        return text;
+    }
+    std::string utf8(utf8Len, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideLen, utf8.data(), utf8Len, nullptr, nullptr);
+    return utf8;
+}
+
 ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &youtubeUrl)
 {
     SECURITY_ATTRIBUTES secAttr{};
@@ -64,8 +105,10 @@ ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &youtubeUrl)
     startupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
 
     // Two --print fields make yt-dlp emit the title on the first line and
-    // the direct media URL on the next, in one process.
-    const std::string args = " --no-playlist --no-warnings --socket-timeout 10 -f bestaudio --print title --print urls \"" + youtubeUrl + "\"";
+    // the direct media URL on the next, in one process. Without
+    // --encoding utf-8, yt-dlp writes pipe output in the ANSI code page
+    // (cp1250 here), which turns Polish titles into mojibake on Discord.
+    const std::string args = " --no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print urls \"" + youtubeUrl + "\"";
 
     PROCESS_INFORMATION processInfo{};
     std::string commandToRun = "yt-dlp" + args;
@@ -123,6 +166,12 @@ ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &youtubeUrl)
     media.directUrl = lines.back();
     if (lines.size() >= 2) {
         media.title = lines.front();
+        // Fallback for a yt-dlp that ignored --encoding utf-8: the title
+        // arrives in the ANSI code page - convert it instead of handing
+        // Discord invalid UTF-8 (which renders as U+FFFD).
+        if (!isValidUtf8(media.title)) {
+            media.title = ansiToUtf8(media.title);
+        }
     }
     return media;
 }
