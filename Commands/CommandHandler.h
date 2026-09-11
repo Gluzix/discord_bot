@@ -27,7 +27,4 @@ private:
     std::shared_ptr<dpp::cluster> bot;
     std::shared_ptr<PlaybackController> playback;
     std::unordered_map<std::string, std::unique_ptr<ICommand>> commands{};
-
-    // Timers
-    std::map<dpp::snowflake, dpp::timer> userTimers{};
 };

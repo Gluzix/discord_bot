@@ -5,7 +5,6 @@
 #include "StopCommand.h"
 #include "SkipCommand.h"
 #include "QueueCommand.h"
-#include "StartTimerCommand.h"
 #include "PlayCommand.h"
 #include "PlaybackController.h"
 #include <QDebug>
@@ -30,8 +29,6 @@ void CommandHandler::prepare()
     add<LeaveCommand>(playback);
     add<SkipCommand>(playback);
     add<QueueCommand>(playback);
-    add<StartTimerCommand>("start_timer", "started timer...", bot, userTimers);
-    add<StartTimerCommand>("stop_timer", "stopped timer...", bot, userTimers);
 
     if (bot) {
         // Starts a /play that was waiting for the voice handshake to finish.
@@ -57,9 +54,14 @@ void CommandHandler::prepare()
 
         bot->on_ready([this](const dpp::ready_t& event) {
             if (dpp::run_once<struct register_bot_commands>()) {
+                // Bulk create OVERWRITES the guild-visible command set, so
+                // commands deleted from the code also disappear from Discord
+                // instead of lingering as dead entries.
+                std::vector<dpp::slashcommand> definitions;
                 for (const auto &[name, command] : commands) {
-                    bot->global_command_create(command->definition(bot->me.id));
+                    definitions.push_back(command->definition(bot->me.id));
                 }
+                bot->global_bulk_command_create(definitions);
             }
         });
     } else {

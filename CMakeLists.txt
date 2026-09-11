@@ -42,7 +42,6 @@ add_executable(discord_bot
   Commands/StopCommand.h Commands/StopCommand.cpp
   Commands/SkipCommand.h Commands/SkipCommand.cpp
   Commands/QueueCommand.h Commands/QueueCommand.cpp
-  Commands/StartTimerCommand.h Commands/StartTimerCommand.cpp
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
   Encoders/Mp3Encoder.h Encoders/Mp3Encoder.cpp

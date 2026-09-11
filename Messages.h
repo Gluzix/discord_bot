@@ -43,12 +43,4 @@ inline constexpr const char* queueNowPlayingPrefix = "Now playing: ";
 inline constexpr const char* queueMorePrefix       = "...and ";
 inline constexpr const char* queueMoreSuffix       = " more";
 
-// timers
-inline constexpr const char* timerAlreadyRunning = "You've already got an in-progress timer!";
-inline constexpr const char* timerStartedPrefix  = "Started a timer every ";
-inline constexpr const char* timerStartedSuffix  = " seconds!";
-inline constexpr const char* timerNoneInProgress = "There are no timers currently in-progress!";
-inline constexpr const char* timerNotYours       = "You don't currently have a timer in-progress!";
-inline constexpr const char* timerStopped        = "Stopped your timer!";
-
 }
