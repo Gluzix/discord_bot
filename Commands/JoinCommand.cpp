@@ -4,14 +4,15 @@
 
 #include <dpp/dpp.h>
 
-JoinCommand::JoinCommand()
+JoinCommand::JoinCommand(std::shared_ptr<PlaybackController> playback_)
     : Command("join", "joins channel where the user's in")
+    , playback(playback_)
 {
 }
 
 void JoinCommand::execute(const dpp::slashcommand_t &event)
 {
-    switch (VoiceConnector::ensureJoined(event)) {
+    switch (VoiceConnector::ensureJoined(event, playback.get())) {
     case VoiceConnector::Result::Joined:
         event.reply(messages::joinedChannel);
         break;

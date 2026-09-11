@@ -29,6 +29,14 @@ public:
         std::vector<std::string> queued;  // urls waiting in the queue
     };
 
+    struct SessionInfo
+    {
+        bool active{false};     // a song is playing or waiting in the queue
+        uint64_t channelId{0};  // the voice channel the session lives in (0 if unknown yet)
+    };
+
+    SessionInfo sessionInfo();
+
     PlaybackController();
     ~PlaybackController();
 
@@ -49,6 +57,11 @@ public:
     // Called by the bot's on_voice_ready handler once a voice connection
     // can accept audio.
     void onVoiceReady(const dpp::voice_ready_t &event);
+
+    // Called with the bot's own voice channel id whenever its voice state
+    // changes; a move to another channel (or out of voice) destroys the old
+    // client, so playback stops.
+    void onBotVoiceStateChanged(uint64_t channelId);
 
     QueueSnapshot queueSnapshot();
 
@@ -80,6 +93,7 @@ private:
     std::condition_variable stateCv;
     std::deque<Song> songQueue;
     dpp::discord_voice_client *currentVoiceClient{nullptr};
+    uint64_t activeChannelId{0};
     bool songActive{false};
     std::string currentSongLabel; // pre-rendered markdown for /queue
     uint64_t nextSongId{1};

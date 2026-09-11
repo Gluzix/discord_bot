@@ -23,6 +23,12 @@ inline constexpr const char* errorOpenStream  = "Couldn't open the audio stream 
 inline constexpr const char* errorReadStream  = "Couldn't read the audio stream :(";
 inline constexpr const char* errorNoAudio     = "That link has no audio stream :(";
 
+// playback control policy
+inline constexpr const char* mustBeWithBot        = "You need to be in my voice channel to control the music!";
+inline constexpr const char* busyInChannelPrefix  = "I'm busy playing in ";
+inline constexpr const char* busyInChannelSuffix  = " - join me there!";
+inline constexpr const char* busyChannelFallback  = "another channel";
+
 // /stop, /skip, /leave
 inline constexpr const char* notConnected     = "I'm not connected to any voice channel!";
 inline constexpr const char* nothingPlaying   = "Nothing is playing right now!";

@@ -1,5 +1,6 @@
 #include "StopCommand.h"
 #include "PlaybackController.h"
+#include "VoiceConnector.h"
 #include "Messages.h"
 
 #include <dpp/dpp.h>
@@ -16,6 +17,11 @@ void StopCommand::execute(const dpp::slashcommand_t &event)
 
     if (!currentVoiceChannel || !currentVoiceChannel->voiceclient || !currentVoiceChannel->voiceclient->is_ready()) {
         event.reply(messages::notConnected);
+        return;
+    }
+
+    if (!VoiceConnector::userInBotChannel(event) && !VoiceConnector::botIsAloneInChannel(event)) {
+        event.reply(messages::mustBeWithBot);
         return;
     }
 

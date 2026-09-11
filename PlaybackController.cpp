@@ -128,11 +128,22 @@ void PlaybackController::stop()
         // the worker can't start a queued song on a dead client. The next
         // /play or onVoiceReady provides a fresh one.
         currentVoiceClient = nullptr;
+        activeChannelId = 0;
     }
 
     stopSendingData();
     if (wasActive && voiceClient) {
         voiceClient->stop_audio();
+    }
+
+    // Wait (bounded) until the worker has joined the song threads, so a
+    // caller about to switch channels can safely let dpp destroy the old
+    // voice client - no thread of ours may still be touching it.
+    {
+        std::unique_lock<std::mutex> lock(stateMutex);
+        stateCv.wait_for(lock, std::chrono::seconds(2), [this] {
+            return !songActive;
+        });
     }
 }
 
@@ -141,8 +152,30 @@ void PlaybackController::onVoiceReady(const dpp::voice_ready_t &event)
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         currentVoiceClient = event.voice_client;
+        activeChannelId = event.voice_client ? static_cast<uint64_t>(event.voice_client->channel_id) : 0;
     }
     stateCv.notify_all();
+}
+
+void PlaybackController::onBotVoiceStateChanged(uint64_t channelId)
+{
+    bool movedAway = false;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        movedAway = activeChannelId != 0 && channelId != activeChannelId;
+    }
+    if (movedAway) {
+        stop();
+    }
+}
+
+PlaybackController::SessionInfo PlaybackController::sessionInfo()
+{
+    SessionInfo info;
+    std::lock_guard<std::mutex> lock(stateMutex);
+    info.active = songActive || !songQueue.empty();
+    info.channelId = activeChannelId;
+    return info;
 }
 
 PlaybackController::QueueSnapshot PlaybackController::queueSnapshot()
@@ -185,6 +218,8 @@ void PlaybackController::playbackWorker()
             songActive = false;
             currentSongLabel.clear();
         }
+        // stop() may be waiting for the song threads to be fully joined.
+        stateCv.notify_all();
     }
 }
 
@@ -333,13 +368,13 @@ void PlaybackController::streamAudio(dpp::discord_voice_client *voiceClient)
             audioQueue.pop();
         }
 
-        {
+        // Never call into dpp while holding queueMutex - a foreign lock
+        // inside our critical section is how the whole pipeline wedges.
+        while (isPlaying && voiceClient->get_secs_remaining() > MAX_BUFFERED_SECONDS) {
             std::unique_lock<std::mutex> lock(queueMutex);
-            while (isPlaying && voiceClient->get_secs_remaining() > MAX_BUFFERED_SECONDS) {
-                queueCv.wait_for(lock, std::chrono::milliseconds(100), [this] {
-                    return !isPlaying;
-                });
-            }
+            queueCv.wait_for(lock, std::chrono::milliseconds(100), [this] {
+                return !isPlaying;
+            });
         }
         if (!isPlaying) break;
 

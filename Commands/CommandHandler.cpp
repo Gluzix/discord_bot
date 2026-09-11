@@ -24,7 +24,7 @@ void CommandHandler::prepare()
     playback = std::make_shared<PlaybackController>();
 
     add<Command>("ping", "ping test");
-    add<JoinCommand>();
+    add<JoinCommand>(playback);
     add<PlayCommand>(playback);
     add<StopCommand>(playback);
     add<LeaveCommand>(playback);
@@ -39,12 +39,12 @@ void CommandHandler::prepare()
             playback->onVoiceReady(event);
         });
 
-        // If the bot is kicked from a voice channel or the connection drops,
-        // dpp destroys the voice client - stop playback so no thread keeps
-        // sending into a dead client.
+        // Any change of the bot's own voice channel (kicked, dragged, or
+        // disconnected) can destroy the old voice client - stop playback so
+        // no thread keeps sending into a dead client.
         bot->on_voice_state_update([playback = playback, bot = bot](const dpp::voice_state_update_t& event) {
-            if (event.state.user_id == bot->me.id && event.state.channel_id.empty()) {
-                playback->stop();
+            if (event.state.user_id == bot->me.id) {
+                playback->onBotVoiceStateChanged(event.state.channel_id);
             }
         });
 
