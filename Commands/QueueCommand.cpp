@@ -21,7 +21,13 @@ void QueueCommand::execute(const dpp::slashcommand_t &event)
 
     std::string text;
     if (!snapshot.current.empty()) {
-        text += messages::queueNowPlayingPrefix + ("**" + snapshot.current + "**\n");
+        text += messages::queueNowPlayingPrefix + ("**" + snapshot.current + "**");
+        if (snapshot.loop == PlaybackController::LoopMode::Song) {
+            text += messages::queueLoopSongSuffix;
+        } else if (snapshot.loop == PlaybackController::LoopMode::Queue) {
+            text += messages::queueLoopQueueSuffix;
+        }
+        text += "\n";
     }
 
     const size_t MAX_LISTED = 15; // stay far below Discord's 2000 char limit

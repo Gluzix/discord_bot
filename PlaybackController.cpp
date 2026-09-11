@@ -79,6 +79,9 @@ size_t PlaybackController::play(const std::string &youtubeUrl, const dpp::slashc
         song.event = std::make_unique<dpp::slashcommand_t>(event);
         songQueue.push_back(std::move(song));
 
+        idleSinceSeconds = 0;
+        lastTextChannelId = event.command.channel_id;
+
         // A ready voice connection travels with the request; if the
         // handshake is still in flight, songs simply wait in the queue
         // until onVoiceReady provides the client.
@@ -104,6 +107,8 @@ bool PlaybackController::skip()
             return false;
         }
         voiceClient = currentVoiceClient;
+        // Song-mode looping must not resurrect a song the user just skipped.
+        skipRequested = true;
     }
 
     // Ending the current song is enough - the worker joins its threads and
@@ -134,6 +139,10 @@ void PlaybackController::stop()
         // /play or onVoiceReady provides a fresh one.
         currentVoiceClient = nullptr;
         activeChannelId = 0;
+        loopMode = LoopMode::Off;
+        skipRequested = false;
+        // The bot may well still sit in the channel - the idle clock starts.
+        idleSinceSeconds = static_cast<int64_t>(time(nullptr));
     }
 
     stopSendingData();
@@ -194,12 +203,25 @@ bool PlaybackController::resume()
     return false;
 }
 
+void PlaybackController::setLoopMode(LoopMode mode)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    loopMode = mode;
+}
+
 void PlaybackController::onVoiceReady(const dpp::voice_ready_t &event)
 {
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         currentVoiceClient = event.voice_client;
         activeChannelId = event.voice_client ? static_cast<uint64_t>(event.voice_client->channel_id) : 0;
+        if (event.voice_client) {
+            activeGuildId = static_cast<uint64_t>(event.voice_client->server_id);
+        }
+        // Joined but with nothing to play - the idle clock starts.
+        if (!songActive && songQueue.empty()) {
+            idleSinceSeconds = static_cast<int64_t>(time(nullptr));
+        }
     }
     stateCv.notify_all();
 }
@@ -216,6 +238,17 @@ void PlaybackController::onBotVoiceStateChanged(uint64_t channelId)
     }
 }
 
+PlaybackController::IdleInfo PlaybackController::idleInfo()
+{
+    IdleInfo info;
+    std::lock_guard<std::mutex> lock(stateMutex);
+    info.idle = !songActive && songQueue.empty();
+    info.idleSinceSeconds = idleSinceSeconds;
+    info.guildId = activeGuildId;
+    info.textChannelId = lastTextChannelId;
+    return info;
+}
+
 PlaybackController::SessionInfo PlaybackController::sessionInfo()
 {
     SessionInfo info;
@@ -230,6 +263,7 @@ PlaybackController::QueueSnapshot PlaybackController::queueSnapshot()
     QueueSnapshot snapshot;
     std::lock_guard<std::mutex> lock(stateMutex);
     snapshot.current = currentSongLabel;
+    snapshot.loop = loopMode;
     for (const Song &song : songQueue) {
         snapshot.queued.push_back(renderLabel(song.title, song.webpageUrl, song.target));
     }
@@ -253,17 +287,42 @@ void PlaybackController::playbackWorker()
             songQueue.pop_front();
             voiceClient = currentVoiceClient;
             songActive = true;
+            idleSinceSeconds = 0;
             currentSongLabel = renderLabel(song.title, song.webpageUrl, song.target);
         }
 
         // Blocks until the song ends naturally or is skipped/stopped;
         // finishing this call IS the auto-advance to the next loop turn.
-        playSong(voiceClient, std::move(song));
+        playSong(voiceClient, song);
 
         {
             std::lock_guard<std::mutex> lock(stateMutex);
+
+            // If pcmResample re-resolved the song (expired URL), the replay
+            // adopts the fresh data - infinite loops stay gapless.
+            if (lastResolvedAtSeconds > song.resolvedAtSeconds) {
+                song.title = lastResolvedTitle;
+                song.webpageUrl = lastResolvedWebpageUrl;
+                song.directUrl = lastResolvedDirectUrl;
+                song.resolvedAtSeconds = lastResolvedAtSeconds;
+            }
+
+            bool endedNaturally = !skipRequested && !currentSongFailed;
+            bool sessionAlive = running && currentVoiceClient != nullptr;
+            if (sessionAlive && loopMode == LoopMode::Song && endedNaturally) {
+                // Repeat-one: back to the front, quietly.
+                songQueue.push_front(makeReplay(song, true));
+            } else if (sessionAlive && loopMode == LoopMode::Queue && !currentSongFailed) {
+                // Repeat-all: rotate to the back (skips stay in the rotation).
+                songQueue.push_back(makeReplay(song, false));
+            }
+            skipRequested = false;
+
             songActive = false;
             currentSongLabel.clear();
+            if (songQueue.empty()) {
+                idleSinceSeconds = static_cast<int64_t>(time(nullptr));
+            }
         }
         // stop() may be waiting for the song threads to be fully joined.
         stateCv.notify_all();
@@ -344,7 +403,22 @@ void PlaybackController::resolverWorker()
     }
 }
 
-void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, Song song)
+PlaybackController::Song PlaybackController::makeReplay(const Song &song, bool loopReplay)
+{
+    Song replay;
+    replay.id = nextSongId++;
+    replay.target = song.target;
+    replay.wasQueued = true; // any announcement goes out as a fresh message
+    replay.event = std::make_unique<dpp::slashcommand_t>(*song.event);
+    replay.title = song.title;
+    replay.webpageUrl = song.webpageUrl;
+    replay.directUrl = song.directUrl;
+    replay.resolvedAtSeconds = song.resolvedAtSeconds;
+    replay.isLoopReplay = loopReplay;
+    return replay;
+}
+
+void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, const Song &song)
 {
     // Shutdown may have happened between popping the song and getting here;
     // re-arming isPlaying now would make the destructor wait out the song.
@@ -368,6 +442,12 @@ void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, Song s
     prefetchedWebpageUrl = prefetchIsFresh ? song.webpageUrl : std::string{};
     prefetchedDirectUrl = prefetchIsFresh ? song.directUrl : std::string{};
     currentSongWasQueued = song.wasQueued;
+    currentSongIsLoopReplay = song.isLoopReplay;
+    currentSongFailed = false;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        lastResolvedAtSeconds = 0;
+    }
 
     isPlaying = true;
 
@@ -466,9 +546,19 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         media.directUrl = prefetchedDirectUrl;
     } else {
         media = WindowsProcessRunner::resolveMedia(requestedUrl);
+        if (!media.directUrl.empty()) {
+            // Loop replays adopt this fresh resolution - an infinitely
+            // looping song survives its URL expiring without a gap.
+            std::lock_guard<std::mutex> lock(stateMutex);
+            lastResolvedTitle = media.title;
+            lastResolvedWebpageUrl = media.webpageUrl;
+            lastResolvedDirectUrl = media.directUrl;
+            lastResolvedAtSeconds = static_cast<int64_t>(time(nullptr));
+        }
     }
 
     if (media.directUrl.empty()) {
+        currentSongFailed = true;
         notifyUser(dpp::message(messages::errorResolve));
         signalFinished();
         return;
@@ -498,6 +588,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         char errbuf[256];
         av_strerror(errorCode, errbuf, sizeof(errbuf));
         qDebug() << "Cannot open input! avformat_open_input returned with " << errorCode << errbuf;
+        currentSongFailed = true;
         notifyUser(dpp::message(messages::errorOpenStream));
         signalFinished();
         return;
@@ -507,6 +598,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     if (errorCode != 0) {
         qDebug() << "Cannot find stream info! avformat_find_stream_info returned with " << errorCode;
         avformat_close_input(&format);
+        currentSongFailed = true;
         notifyUser(dpp::message(messages::errorReadStream));
         signalFinished();
         return;
@@ -516,6 +608,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     if (audioStream < 0) {
         qDebug() << "Couldn't find audio stream! av_find_best_stream returned with " << audioStream;
         avformat_close_input(&format);
+        currentSongFailed = true;
         notifyUser(dpp::message(messages::errorNoAudio));
         signalFinished();
         return;
@@ -523,10 +616,13 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
 
     // The title is untrusted input from the video page - disable every kind
     // of mention so a title like "@everyone" can't ping the server. Rendered
-    // as a masked link: clickable title, no embed preview.
-    dpp::message nowPlaying(messages::playingPrefix + renderLabel(media.title, media.webpageUrl, requestedUrl));
-    nowPlaying.set_allowed_mentions();
-    notifyUser(nowPlaying);
+    // as a masked link: clickable title, no embed preview. Song-mode loop
+    // replays stay quiet - nobody needs the same title announced 20 times.
+    if (!currentSongIsLoopReplay) {
+        dpp::message nowPlaying(messages::playingPrefix + renderLabel(media.title, media.webpageUrl, requestedUrl));
+        nowPlaying.set_allowed_mentions();
+        notifyUser(nowPlaying);
+    }
 
     const AVCodec *codec = avcodec_find_decoder(format->streams[audioStream]->codecpar->codec_id);
     AVCodecContext* codec_ctx = avcodec_alloc_context3(codec);

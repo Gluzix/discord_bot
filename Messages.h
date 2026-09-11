@@ -36,12 +36,20 @@ inline constexpr const char* stoppedPlaying   = "Stopped playing and cleared the
 inline constexpr const char* skipped          = "Skipped!";
 inline constexpr const char* cannotLeave      = "Cannot leave, I'm not on the same channel as you!";
 inline constexpr const char* leaving          = "Okay, i'm leaving :(";
+inline constexpr const char* idleLeft         = "Nothing played for a while - I'm leaving the voice channel!";
 inline constexpr const char* pause            = "Pausing currently playing song";
 inline constexpr const char* resume           = "Resuming currently paused song";
 inline constexpr const char* nothingToResume   = "Nothing to resume";
 
+// /loop
+inline constexpr const char* loopSong  = "Looping the current song!";
+inline constexpr const char* loopQueue = "Looping the whole queue!";
+inline constexpr const char* loopOff   = "Looping turned off!";
+
 // /queue
 inline constexpr const char* queueEmpty            = "The queue is empty and nothing is playing.";
+inline constexpr const char* queueLoopSongSuffix   = " (loop: song)";
+inline constexpr const char* queueLoopQueueSuffix  = " (loop: queue)";
 inline constexpr const char* queueNowPlayingPrefix = "Now playing: ";
 inline constexpr const char* queueMorePrefix       = "...and ";
 inline constexpr const char* queueMoreSuffix       = " more";

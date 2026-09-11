@@ -23,10 +23,17 @@ struct slashcommand_t;
 class PlaybackController
 {
 public:
+    enum class LoopMode {
+        Off,
+        Song,  // repeat the current song when it ends naturally
+        Queue, // finished (or skipped) songs rotate to the back of the queue
+    };
+
     struct QueueSnapshot
     {
         std::string current;              // title (or url) of the playing song, empty when idle
         std::vector<std::string> queued;  // urls waiting in the queue
+        LoopMode loop{LoopMode::Off};
     };
 
     struct SessionInfo
@@ -36,6 +43,17 @@ public:
     };
 
     SessionInfo sessionInfo();
+
+    struct IdleInfo
+    {
+        bool idle{false};             // nothing playing and the queue is empty
+        int64_t idleSinceSeconds{0};  // when the idling started (0 = unknown)
+        uint64_t guildId{0};          // last known voice guild (0 = never joined)
+        uint64_t textChannelId{0};    // where the last /play came from
+    };
+
+    // For the idle-timeout timer: says how long the bot has been useless.
+    IdleInfo idleInfo();
 
     PlaybackController();
     ~PlaybackController();
@@ -57,6 +75,9 @@ public:
     bool pause();
 
     bool resume();
+
+    // Sets the loop mode. Persists until changed or /stop turns it Off.
+    void setLoopMode(LoopMode mode);
 
     // Called by the bot's on_voice_ready handler once a voice connection
     // can accept audio.
@@ -83,11 +104,13 @@ private:
         std::string directUrl;
         int64_t resolvedAtSeconds{0};
         bool resolveFailed{false}; // resolver gave up; playSong retries itself
+        bool isLoopReplay{false};  // song-mode repeat: suppress the "Playing:" announcement
     };
 
     void playbackWorker();
     void resolverWorker();
-    void playSong(dpp::discord_voice_client *voiceClient, Song song);
+    void playSong(dpp::discord_voice_client *voiceClient, const Song &song);
+    Song makeReplay(const Song &song, bool loopReplay); // call with stateMutex held (uses nextSongId)
     void streamAudio(dpp::discord_voice_client *voiceClient);
     void pcmResample(dpp::slashcommand_t event);
     void stopSendingData();
@@ -98,7 +121,12 @@ private:
     std::deque<Song> songQueue;
     dpp::discord_voice_client *currentVoiceClient{nullptr};
     uint64_t activeChannelId{0};
+    uint64_t activeGuildId{0};      // last known guild, survives stop/leave
+    int64_t idleSinceSeconds{0};    // set when playback goes quiet
+    uint64_t lastTextChannelId{0};  // farewell messages go here
     bool songActive{false};
+    LoopMode loopMode{LoopMode::Off};
+    bool skipRequested{false}; // song-mode: a skipped song must not requeue itself
     std::string currentSongLabel; // pre-rendered markdown for /queue
     uint64_t nextSongId{1};
     std::atomic<bool> running{true};
@@ -121,6 +149,16 @@ private:
     // announces itself in a fresh message; an immediate song still morphs
     // its "Looking for your song..." placeholder.
     bool currentSongWasQueued{false};
+    bool currentSongIsLoopReplay{false}; // suppresses the repeat announcements
+    bool currentSongFailed{false};       // failed songs never requeue (no error loops)
+
+    // Fresh resolution done by pcmResample for the current song, adopted by
+    // loop replays - keeps an infinite loop gapless after the original URL
+    // expires. Guarded by stateMutex.
+    std::string lastResolvedTitle;
+    std::string lastResolvedWebpageUrl;
+    std::string lastResolvedDirectUrl;
+    int64_t lastResolvedAtSeconds{0};
     std::queue<std::vector<uint8_t>> audioQueue;
     std::mutex queueMutex;
     std::condition_variable queueCv;
