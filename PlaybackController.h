@@ -54,6 +54,10 @@ public:
     // nothing is playing. The worker thread stays alive for the next /play.
     void stop();
 
+    bool pause();
+
+    bool resume();
+
     // Called by the bot's on_voice_ready handler once a voice connection
     // can accept audio.
     void onVoiceReady(const dpp::voice_ready_t &event);

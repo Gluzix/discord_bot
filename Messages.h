@@ -29,13 +29,16 @@ inline constexpr const char* busyInChannelPrefix  = "I'm busy playing in ";
 inline constexpr const char* busyInChannelSuffix  = " - join me there!";
 inline constexpr const char* busyChannelFallback  = "another channel";
 
-// /stop, /skip, /leave
+// /stop, /skip, /leave /pause
 inline constexpr const char* notConnected     = "I'm not connected to any voice channel!";
 inline constexpr const char* nothingPlaying   = "Nothing is playing right now!";
 inline constexpr const char* stoppedPlaying   = "Stopped playing and cleared the queue.";
 inline constexpr const char* skipped          = "Skipped!";
 inline constexpr const char* cannotLeave      = "Cannot leave, I'm not on the same channel as you!";
 inline constexpr const char* leaving          = "Okay, i'm leaving :(";
+inline constexpr const char* pause            = "Pausing currently playing song";
+inline constexpr const char* resume           = "Resuming currently paused song";
+inline constexpr const char* nothingToResume   = "Nothing to resume";
 
 // /queue
 inline constexpr const char* queueEmpty            = "The queue is empty and nothing is playing.";

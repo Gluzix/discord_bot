@@ -112,6 +112,11 @@ bool PlaybackController::skip()
     if (voiceClient) {
         voiceClient->stop_audio();
     }
+
+    if (voiceClient && voiceClient->is_paused()) {
+        voiceClient->pause_audio(false);
+    }
+
     return true;
 }
 
@@ -145,6 +150,48 @@ void PlaybackController::stop()
             return !songActive;
         });
     }
+
+    if (voiceClient && voiceClient->is_paused()) {
+        voiceClient->pause_audio(false);
+    }
+}
+
+bool PlaybackController::pause()
+{
+    dpp::discord_voice_client *voiceClient = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        if (!songActive) {
+            return false;
+        }
+        voiceClient = currentVoiceClient;
+    }
+
+    if (voiceClient && !voiceClient->is_paused()) {
+        voiceClient->pause_audio(true);
+        return true;
+    }
+
+    return false;
+}
+
+bool PlaybackController::resume()
+{
+    dpp::discord_voice_client *voiceClient = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        if (!songActive) {
+            return false;
+        }
+        voiceClient = currentVoiceClient;
+    }
+
+    if (voiceClient && voiceClient->is_paused()) {
+        voiceClient->pause_audio(false);
+        return true;
+    }
+
+    return false;
 }
 
 void PlaybackController::onVoiceReady(const dpp::voice_ready_t &event)

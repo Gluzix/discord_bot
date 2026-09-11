@@ -7,6 +7,8 @@
 #include "QueueCommand.h"
 #include "PlayCommand.h"
 #include "PlaybackController.h"
+#include "PauseCommand.h"
+#include "ResumeCommand.h"
 #include <QDebug>
 
 CommandHandler::CommandHandler()
@@ -29,6 +31,8 @@ void CommandHandler::prepare()
     add<LeaveCommand>(playback);
     add<SkipCommand>(playback);
     add<QueueCommand>(playback);
+    add<PauseCommand>(playback);
+    add<ResumeCommand>(playback);
 
     if (bot) {
         // Starts a /play that was waiting for the voice handshake to finish.

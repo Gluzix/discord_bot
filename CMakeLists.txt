@@ -48,6 +48,8 @@ add_executable(discord_bot
   PlaybackController.h PlaybackController.cpp
   VoiceConnector.h VoiceConnector.cpp
   Messages.h
+  Commands/PauseCommand.h Commands/PauseCommand.cpp
+  Commands/ResumeCommand.h Commands/ResumeCommand.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
