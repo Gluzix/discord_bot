@@ -15,9 +15,7 @@ ResumeCommand::ResumeCommand(std::shared_ptr<PlaybackController> playback_)
 
 void ResumeCommand::execute(const dpp::slashcommand_t &event)
 {
-    dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
-    if (currentVoiceChannel && !VoiceConnector::userInBotChannel(event) && !VoiceConnector::botIsAloneInChannel(event)) {
-        event.reply(messages::mustBeWithBot);
+    if (!userMayControl(event)) {
         return;
     }
 

@@ -1,8 +1,11 @@
 #pragma once
 
 #include "ICommand.h"
+#include "Messages.h"
 
 #include <string>
+
+class PlaybackController;
 
 class Command : public ICommand
 {
@@ -22,6 +25,17 @@ public:
     void execute(const dpp::slashcommand_t &event) override;
 
 protected:
+    // The audience-loyalty rule shared by every playback-control command:
+    // the user must be in the bot's channel (or the bot unconnected/alone).
+    // Replies with the refusal and returns false when control is denied.
+    bool userMayControl(const dpp::slashcommand_t &event, const char *refusalReply = messages::mustBeWithBot);
+
+    // The summoning rule for /play and /join: while a session is active
+    // (playing or queued), only its audience may call the bot elsewhere;
+    // an idle bot follows anyone. Replies with the busy-channel refusal
+    // (with a clickable channel mention) and returns false when denied.
+    bool userMaySummon(const dpp::slashcommand_t &event, PlaybackController &playback);
+
     std::string cmdName{};
     std::string cmdDescription{};
 };

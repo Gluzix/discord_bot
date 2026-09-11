@@ -1,4 +1,6 @@
 #include "Command.h"
+#include "VoiceConnector.h"
+#include "PlaybackController.h"
 
 #include <dpp/dpp.h>
 
@@ -27,4 +29,27 @@ std::string Command::description() const
 void Command::execute(const dpp::slashcommand_t &event)
 {
     event.reply(cmdDescription);
+}
+
+bool Command::userMayControl(const dpp::slashcommand_t &event, const char *refusalReply)
+{
+    dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
+    if (currentVoiceChannel && !VoiceConnector::userInBotChannel(event) && !VoiceConnector::botIsAloneInChannel(event)) {
+        event.reply(refusalReply);
+        return false;
+    }
+    return true;
+}
+
+bool Command::userMaySummon(const dpp::slashcommand_t &event, PlaybackController &playback)
+{
+    PlaybackController::SessionInfo session = playback.sessionInfo();
+    if (session.active && !VoiceConnector::userInBotChannel(event) && !VoiceConnector::botIsAloneInChannel(event)) {
+        std::string where = session.channelId != 0
+            ? "<#" + std::to_string(session.channelId) + ">"
+            : messages::busyChannelFallback;
+        event.reply(messages::busyInChannelPrefix + where + messages::busyInChannelSuffix);
+        return false;
+    }
+    return true;
 }

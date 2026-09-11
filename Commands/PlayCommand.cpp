@@ -73,15 +73,7 @@ dpp::slashcommand PlayCommand::definition(dpp::snowflake botId) const
 
 void PlayCommand::execute(const dpp::slashcommand_t &event)
 {
-    // While people are listening, only they may steer the bot - a /play
-    // from another channel must not bait it away mid-session. An idle bot,
-    // or one playing to an empty room, follows the caller freely.
-    PlaybackController::SessionInfo session = playback->sessionInfo();
-    if (session.active && !VoiceConnector::userInBotChannel(event) && !VoiceConnector::botIsAloneInChannel(event)) {
-        std::string where = session.channelId != 0
-            ? "<#" + std::to_string(session.channelId) + ">"
-            : messages::busyChannelFallback;
-        event.reply(messages::busyInChannelPrefix + where + messages::busyInChannelSuffix);
+    if (!userMaySummon(event, *playback)) {
         return;
     }
 

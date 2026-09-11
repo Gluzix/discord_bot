@@ -21,8 +21,7 @@ void LeaveCommand::execute(const dpp::slashcommand_t &event)
 
     // Same policy as the rest of playback control: only the bot's audience
     // may dismiss it - unless it sits in an empty room anyway.
-    if (!VoiceConnector::userInBotChannel(event) && !VoiceConnector::botIsAloneInChannel(event)) {
-        event.reply(messages::cannotLeave);
+    if (!userMayControl(event, messages::cannotLeave)) {
         return;
     }
 

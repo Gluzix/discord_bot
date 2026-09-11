@@ -20,8 +20,7 @@ void StopCommand::execute(const dpp::slashcommand_t &event)
         return;
     }
 
-    if (!VoiceConnector::userInBotChannel(event) && !VoiceConnector::botIsAloneInChannel(event)) {
-        event.reply(messages::mustBeWithBot);
+    if (!userMayControl(event)) {
         return;
     }
 
