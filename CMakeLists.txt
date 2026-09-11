@@ -44,17 +44,14 @@ add_executable(discord_bot
   Commands/QueueCommand.h Commands/QueueCommand.cpp
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
-  Encoders/Mp3Encoder.h Encoders/Mp3Encoder.cpp
   WindowsProcessRunner.h WindowsProcessRunner.cpp
   PlaybackController.h PlaybackController.cpp
   VoiceConnector.h VoiceConnector.cpp
   Messages.h
-  Handler.h Handler.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
-target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Encoders")
 target_include_directories(discord_bot PRIVATE
     ${FFMPEG_INCLUDE_DIRS}
     "C:/vcpkg/installed/x64-windows/include"
