@@ -57,6 +57,7 @@ private:
     {
         uint64_t id{0};
         std::string target; // youtube url or "ytsearch1:<query>"
+        bool wasQueued{false}; // waited in the queue vs started right away
         std::unique_ptr<dpp::slashcommand_t> event;
 
         // Filled by the resolver thread ahead of time; empty until then.
@@ -97,6 +98,11 @@ private:
     std::string prefetchedTitle;
     std::string prefetchedWebpageUrl;
     std::string prefetchedDirectUrl;
+
+    // A queued song keeps its "Queued at position N" message intact and
+    // announces itself in a fresh message; an immediate song still morphs
+    // its "Looking for your song..." placeholder.
+    bool currentSongWasQueued{false};
     std::queue<std::vector<uint8_t>> audioQueue;
     std::mutex queueMutex;
     std::condition_variable queueCv;

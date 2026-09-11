@@ -75,6 +75,7 @@ size_t PlaybackController::play(const std::string &youtubeUrl, const dpp::slashc
         Song song;
         song.id = nextSongId++;
         song.target = youtubeUrl;
+        song.wasQueued = busy;
         song.event = std::make_unique<dpp::slashcommand_t>(event);
         songQueue.push_back(std::move(song));
 
@@ -284,6 +285,7 @@ void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, Song s
     prefetchedTitle = prefetchIsFresh ? song.title : std::string{};
     prefetchedWebpageUrl = prefetchIsFresh ? song.webpageUrl : std::string{};
     prefetchedDirectUrl = prefetchIsFresh ? song.directUrl : std::string{};
+    currentSongWasQueued = song.wasQueued;
 
     isPlaying = true;
 
@@ -359,6 +361,20 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         queueCv.notify_one();
     };
 
+    // A queued song announces itself in a fresh channel message, leaving its
+    // "Queued at position N" reply intact as history (also immune to the
+    // 15-minute interaction token limit). An immediate song still morphs its
+    // "Looking for your song..." placeholder.
+    const bool announceInNewMessage = currentSongWasQueued;
+    auto notifyUser = [&event, announceInNewMessage](dpp::message msg) {
+        if (announceInNewMessage) {
+            msg.channel_id = event.command.channel_id;
+            event.owner->message_create(msg);
+        } else {
+            event.edit_original_response(msg);
+        }
+    };
+
     ResolvedMedia media;
     if (!prefetchedDirectUrl.empty()) {
         // The resolver thread already did the yt-dlp work while the previous
@@ -371,7 +387,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     }
 
     if (media.directUrl.empty()) {
-        event.edit_original_response(dpp::message(messages::errorResolve));
+        notifyUser(dpp::message(messages::errorResolve));
         signalFinished();
         return;
     }
@@ -400,7 +416,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         char errbuf[256];
         av_strerror(errorCode, errbuf, sizeof(errbuf));
         qDebug() << "Cannot open input! avformat_open_input returned with " << errorCode << errbuf;
-        event.edit_original_response(dpp::message(messages::errorOpenStream));
+        notifyUser(dpp::message(messages::errorOpenStream));
         signalFinished();
         return;
     }
@@ -409,7 +425,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     if (errorCode != 0) {
         qDebug() << "Cannot find stream info! avformat_find_stream_info returned with " << errorCode;
         avformat_close_input(&format);
-        event.edit_original_response(dpp::message(messages::errorReadStream));
+        notifyUser(dpp::message(messages::errorReadStream));
         signalFinished();
         return;
     }
@@ -418,7 +434,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     if (audioStream < 0) {
         qDebug() << "Couldn't find audio stream! av_find_best_stream returned with " << audioStream;
         avformat_close_input(&format);
-        event.edit_original_response(dpp::message(messages::errorNoAudio));
+        notifyUser(dpp::message(messages::errorNoAudio));
         signalFinished();
         return;
     }
@@ -428,7 +444,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     // as a masked link: clickable title, no embed preview.
     dpp::message nowPlaying(messages::playingPrefix + renderLabel(media.title, media.webpageUrl, requestedUrl));
     nowPlaying.set_allowed_mentions();
-    event.edit_original_response(nowPlaying);
+    notifyUser(nowPlaying);
 
     const AVCodec *codec = avcodec_find_decoder(format->streams[audioStream]->codecpar->codec_id);
     AVCodecContext* codec_ctx = avcodec_alloc_context3(codec);
