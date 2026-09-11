@@ -1,5 +1,6 @@
 #include "SkipCommand.h"
 #include "PlaybackController.h"
+#include "Messages.h"
 
 #include <dpp/dpp.h>
 
@@ -12,8 +13,8 @@ SkipCommand::SkipCommand(std::shared_ptr<PlaybackController> playback_)
 void SkipCommand::execute(const dpp::slashcommand_t &event)
 {
     if (playback->skip()) {
-        event.reply("Skipped!");
+        event.reply(messages::skipped);
     } else {
-        event.reply("Nothing is playing right now!");
+        event.reply(messages::nothingPlaying);
     }
 }

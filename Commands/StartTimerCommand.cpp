@@ -1,4 +1,5 @@
 #include "StartTimerCommand.h"
+#include "Messages.h"
 
 #include <dpp/unicode_emoji.h>
 
@@ -15,7 +16,7 @@ void StartTimerCommand::execute(const dpp::slashcommand_t &event)
 {
     if (event.command.get_command_name() == "start_timer") {
         if (userTimers.find(event.command.usr.id) != userTimers.end()) {
-            event.reply("You've already got an in-progress timer!");
+            event.reply(messages::timerAlreadyRunning);
             return;
         }
 
@@ -33,16 +34,16 @@ void StartTimerCommand::execute(const dpp::slashcommand_t &event)
                  */
         userTimers.emplace(event.command.usr.id, timer);
 
-        event.reply("Started a timer every " + std::to_string(timeout) + " seconds!");
+        event.reply(messages::timerStartedPrefix + std::to_string(timeout) + messages::timerStartedSuffix);
     }
 
     if(event.command.get_command_name() == "stop_timer") {
         /* Is user_timers empty? */
         if (userTimers.empty()) {
-            event.reply("There are no timers currently in-progress!");
+            event.reply(messages::timerNoneInProgress);
             return;
         } else if (userTimers.find(event.command.usr.id) == userTimers.end()) { /* Does user_timers not contain the user id? */
-            event.reply("You've don't currently have a timer in-progress!");
+            event.reply(messages::timerNotYours);
             return;
         }
 
@@ -51,6 +52,6 @@ void StartTimerCommand::execute(const dpp::slashcommand_t &event)
         /* Remove the timer from user_timers. */
         userTimers.erase(event.command.usr.id);
 
-        event.reply("Stopped your timer!");
+        event.reply(messages::timerStopped);
     }
 }

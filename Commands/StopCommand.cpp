@@ -1,5 +1,6 @@
 #include "StopCommand.h"
 #include "PlaybackController.h"
+#include "Messages.h"
 
 #include <dpp/dpp.h>
 
@@ -14,7 +15,7 @@ void StopCommand::execute(const dpp::slashcommand_t &event)
     dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
 
     if (!currentVoiceChannel || !currentVoiceChannel->voiceclient || !currentVoiceChannel->voiceclient->is_ready()) {
-        event.reply("I'm not connected to any voice channel!");
+        event.reply(messages::notConnected);
         return;
     }
 
@@ -25,7 +26,7 @@ void StopCommand::execute(const dpp::slashcommand_t &event)
     playback->stop();
 
     if (!wasPlaying) {
-        event.reply("Nothing is playing right now!");
+        event.reply(messages::nothingPlaying);
         return;
     }
 
@@ -33,5 +34,5 @@ void StopCommand::execute(const dpp::slashcommand_t &event)
     // playback continues until its internal queue drains.
     currentVoiceChannel->voiceclient->stop_audio();
 
-    event.reply("Stopped playing and cleared the queue.");
+    event.reply(messages::stoppedPlaying);
 }

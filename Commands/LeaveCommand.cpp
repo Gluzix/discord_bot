@@ -1,5 +1,6 @@
 #include "LeaveCommand.h"
 #include "PlaybackController.h"
+#include "Messages.h"
 
 #include <dpp/dpp.h>
 
@@ -16,7 +17,7 @@ void LeaveCommand::execute(const dpp::slashcommand_t &event)
 
     /* The user issuing the command is not on any voice channel, we can't do anything */
     if (!guild->connect_member_voice(*event.owner, event.command.get_issuing_user().id)) {
-        event.reply("Cannot leave, I'm not on the same channel as you!");
+        event.reply(messages::cannotLeave);
         return;
     }
 
@@ -36,11 +37,11 @@ void LeaveCommand::execute(const dpp::slashcommand_t &event)
                     Sleep(500);
                 }
                 event.from()->disconnect_voice(event.command.guild_id);
-                event.reply("Okay, i'm leaving :(");
+                event.reply(messages::leaving);
             });
             async.wait();
         }
     } else {
-        event.reply("Cannot leave, I'm not on the same channel as you!");
+        event.reply(messages::cannotLeave);
     }
 }

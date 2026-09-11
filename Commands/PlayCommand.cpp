@@ -1,6 +1,7 @@
 #include "PlayCommand.h"
 #include "PlaybackController.h"
 #include "VoiceConnector.h"
+#include "Messages.h"
 
 #include <dpp/dpp.h>
 #include <cctype>
@@ -73,13 +74,13 @@ dpp::slashcommand PlayCommand::definition(dpp::snowflake botId) const
 void PlayCommand::execute(const dpp::slashcommand_t &event)
 {
     if (VoiceConnector::ensureJoined(event) == VoiceConnector::Result::UserNotInVoice) {
-        event.reply("You don't seem to be in a voice channel!");
+        event.reply(messages::userNotInVoice);
         return;
     }
 
     // The interaction's one response slot: ack with a placeholder that the
     // pipeline later edits into "Playing: <title>" or an error message.
-    event.reply("Looking for your song...");
+    event.reply(messages::lookingForSong);
 
     std::string input;
     auto songParameter = event.get_parameter("song");
@@ -95,7 +96,7 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
     } else if (isReasonableSearchQuery(input)) {
         target = "ytsearch1:" + input;
     } else {
-        event.edit_original_response(dpp::message("Give me a YouTube link or a song title to search for!"));
+        event.edit_original_response(dpp::message(messages::invalidSongInput));
         return;
     }
 
@@ -103,6 +104,6 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
     if (waitingPosition > 0) {
         // Something is already playing; the placeholder becomes the queue
         // confirmation and morphs into "Playing: <title>" when its turn comes.
-        event.edit_original_response(dpp::message("Queued at position " + std::to_string(waitingPosition)));
+        event.edit_original_response(dpp::message(messages::queuedAtPrefix + std::to_string(waitingPosition)));
     }
 }

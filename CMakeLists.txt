@@ -49,6 +49,7 @@ add_executable(discord_bot
   WindowsProcessRunner.h WindowsProcessRunner.cpp
   PlaybackController.h PlaybackController.cpp
   VoiceConnector.h VoiceConnector.cpp
+  Messages.h
   Handler.h Handler.cpp
 )
 

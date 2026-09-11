@@ -1,5 +1,6 @@
 #include "PlaybackController.h"
 #include "WindowsProcessRunner.h"
+#include "Messages.h"
 
 #include <dpp/dpp.h>
 #include <QDebug>
@@ -19,7 +20,7 @@ static std::string displayLabelFor(const std::string &target)
 {
     const std::string searchPrefix = "ytsearch1:";
     if (target.rfind(searchPrefix, 0) == 0) {
-        return "search: " + target.substr(searchPrefix.size());
+        return messages::searchLabelPrefix + target.substr(searchPrefix.size());
     }
     if (target.rfind("http", 0) == 0) {
         return "<" + target + ">";
@@ -253,7 +254,7 @@ void PlaybackController::resolverWorker()
 
         // Upgrade the "Queued at position N" reply with what we found.
         if (requestEvent) {
-            dpp::message queuedInfo("Queued at position " + std::to_string(position) + ": " + label);
+            dpp::message queuedInfo(messages::queuedAtPrefix + std::to_string(position) + messages::queuedSeparator + label);
             queuedInfo.set_allowed_mentions();
             requestEvent->edit_original_response(queuedInfo);
         }
@@ -370,7 +371,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     }
 
     if (media.directUrl.empty()) {
-        event.edit_original_response(dpp::message("Couldn't get the audio from that link :("));
+        event.edit_original_response(dpp::message(messages::errorResolve));
         signalFinished();
         return;
     }
@@ -399,7 +400,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         char errbuf[256];
         av_strerror(errorCode, errbuf, sizeof(errbuf));
         qDebug() << "Cannot open input! avformat_open_input returned with " << errorCode << errbuf;
-        event.edit_original_response(dpp::message("Couldn't open the audio stream :("));
+        event.edit_original_response(dpp::message(messages::errorOpenStream));
         signalFinished();
         return;
     }
@@ -408,7 +409,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     if (errorCode != 0) {
         qDebug() << "Cannot find stream info! avformat_find_stream_info returned with " << errorCode;
         avformat_close_input(&format);
-        event.edit_original_response(dpp::message("Couldn't read the audio stream :("));
+        event.edit_original_response(dpp::message(messages::errorReadStream));
         signalFinished();
         return;
     }
@@ -417,7 +418,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     if (audioStream < 0) {
         qDebug() << "Couldn't find audio stream! av_find_best_stream returned with " << audioStream;
         avformat_close_input(&format);
-        event.edit_original_response(dpp::message("That link has no audio stream :("));
+        event.edit_original_response(dpp::message(messages::errorNoAudio));
         signalFinished();
         return;
     }
@@ -425,7 +426,7 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     // The title is untrusted input from the video page - disable every kind
     // of mention so a title like "@everyone" can't ping the server. Rendered
     // as a masked link: clickable title, no embed preview.
-    dpp::message nowPlaying("Playing: " + renderLabel(media.title, media.webpageUrl, requestedUrl));
+    dpp::message nowPlaying(messages::playingPrefix + renderLabel(media.title, media.webpageUrl, requestedUrl));
     nowPlaying.set_allowed_mentions();
     event.edit_original_response(nowPlaying);
 

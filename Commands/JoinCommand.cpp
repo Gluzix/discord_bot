@@ -1,5 +1,6 @@
 #include "JoinCommand.h"
 #include "VoiceConnector.h"
+#include "Messages.h"
 
 #include <dpp/dpp.h>
 
@@ -12,13 +13,13 @@ void JoinCommand::execute(const dpp::slashcommand_t &event)
 {
     switch (VoiceConnector::ensureJoined(event)) {
     case VoiceConnector::Result::Joined:
-        event.reply("Joined your channel!");
+        event.reply(messages::joinedChannel);
         break;
     case VoiceConnector::Result::AlreadyInChannel:
-        event.reply("Don't need to join your channel as i'm already there with you!");
+        event.reply(messages::alreadyInChannel);
         break;
     case VoiceConnector::Result::UserNotInVoice:
-        event.reply("You don't seem to be in a voice channel!");
+        event.reply(messages::userNotInVoice);
         break;
     }
 }
