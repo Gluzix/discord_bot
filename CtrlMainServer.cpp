@@ -18,3 +18,10 @@ void CtrlMainServer::run()
 {
     bot->start(dpp::st_wait);
 }
+
+void CtrlMainServer::requestShutdown()
+{
+    if (bot && !shuttingDown.exchange(true)) {
+        bot->shutdown();
+    }
+}

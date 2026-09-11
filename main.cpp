@@ -43,12 +43,38 @@ static void pointOpenSslAtBundledCertificates()
     }
 }
 
+// Ctrl+C's default behavior is an instant ExitProcess - no destructors, no
+// thread joins, reported as a crash. This handler routes it into a clean
+// dpp shutdown instead: run() returns and everything unwinds normally.
+static CtrlMainServer* activeServer = nullptr;
+
+static BOOL WINAPI consoleCtrlHandler(DWORD signalType)
+{
+    switch (signalType) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+        if (activeServer != nullptr) {
+            activeServer->requestShutdown();
+        }
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 int main(int argc, char *argv[])
 {
     pointOpenSslAtBundledCertificates();
 
     CtrlMainServer server;
+    activeServer = &server;
+    SetConsoleCtrlHandler(consoleCtrlHandler, TRUE);
+
     server.run();
+
+    SetConsoleCtrlHandler(consoleCtrlHandler, FALSE);
+    activeServer = nullptr;
 
     return 0;
 }
