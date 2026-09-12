@@ -41,6 +41,11 @@ inline constexpr const char* pause            = "Pausing currently playing song"
 inline constexpr const char* resume           = "Resuming currently paused song";
 inline constexpr const char* nothingToResume   = "Nothing to resume";
 
+// /forward
+inline constexpr const char* forwardedPrefix  = "Forwarded ~";
+inline constexpr const char* forwardedSuffix  = "s!";
+inline constexpr const char* nothingBuffered  = "Nothing buffered to skip yet - try again in a moment!";
+
 // /loop
 inline constexpr const char* loopSong  = "Looping the current song!";
 inline constexpr const char* loopQueue = "Looping the whole queue!";

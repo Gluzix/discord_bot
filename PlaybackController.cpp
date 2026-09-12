@@ -70,7 +70,7 @@ size_t PlaybackController::play(const std::string &youtubeUrl, const dpp::slashc
     {
         std::lock_guard<std::mutex> lock(stateMutex);
 
-        bool busy = songActive || !songQueue.empty();
+        bool busy = songInProgress || !songQueue.empty();
 
         Song song;
         song.id = nextSongId++;
@@ -103,7 +103,7 @@ bool PlaybackController::skip()
     dpp::discord_voice_client *voiceClient = nullptr;
     {
         std::lock_guard<std::mutex> lock(stateMutex);
-        if (!songActive) {
+        if (!songInProgress) {
             return false;
         }
         voiceClient = currentVoiceClient;
@@ -132,7 +132,7 @@ void PlaybackController::stop()
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         songQueue.clear();
-        wasActive = songActive;
+        wasActive = songInProgress;
         voiceClient = currentVoiceClient;
         // The pointer dies with the voice connection on /leave; drop it so
         // the worker can't start a queued song on a dead client. The next
@@ -156,7 +156,7 @@ void PlaybackController::stop()
     {
         std::unique_lock<std::mutex> lock(stateMutex);
         stateCv.wait_for(lock, std::chrono::seconds(2), [this] {
-            return !songActive;
+            return !songInProgress;
         });
     }
 
@@ -165,17 +165,15 @@ void PlaybackController::stop()
     }
 }
 
+dpp::discord_voice_client* PlaybackController::clientIfSongInProgress()
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return songInProgress ? currentVoiceClient : nullptr;
+}
+
 bool PlaybackController::pause()
 {
-    dpp::discord_voice_client *voiceClient = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(stateMutex);
-        if (!songActive) {
-            return false;
-        }
-        voiceClient = currentVoiceClient;
-    }
-
+    dpp::discord_voice_client *voiceClient = clientIfSongInProgress();
     if (voiceClient && !voiceClient->is_paused()) {
         voiceClient->pause_audio(true);
         return true;
@@ -186,21 +184,42 @@ bool PlaybackController::pause()
 
 bool PlaybackController::resume()
 {
-    dpp::discord_voice_client *voiceClient = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(stateMutex);
-        if (!songActive) {
-            return false;
-        }
-        voiceClient = currentVoiceClient;
-    }
-
+    dpp::discord_voice_client *voiceClient = clientIfSongInProgress();
     if (voiceClient && voiceClient->is_paused()) {
         voiceClient->pause_audio(false);
         return true;
     }
 
     return false;
+}
+
+int PlaybackController::forward(int seconds)
+{
+    // Only asks "is a song in progress?" - the client itself stays untouched.
+    if (clientIfSongInProgress() == nullptr) {
+        return -1;
+    }
+
+    // The decoder runs ahead of playback, so a jump is just discarding PCM
+    // from our own queue. dpp's ~1s send buffer stays untouched on purpose:
+    // flushing it means calling the voice client while the sender thread is
+    // live on it - the race that crashed.
+    const size_t BYTES_PER_SECOND = 192000; // 48kHz * 2ch * 2 bytes
+    const size_t bytesToDrop = static_cast<size_t>(seconds) * BYTES_PER_SECOND;
+    size_t droppedBytes = 0;
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        while (!audioQueue.empty() && droppedBytes < bytesToDrop) {
+            droppedBytes += audioQueue.front().size();
+            audioQueue.pop();
+        }
+    }
+
+    if (droppedBytes == 0) {
+        return 0; // decoder hasn't buffered anything to skip yet
+    }
+
+    return static_cast<int>((droppedBytes + BYTES_PER_SECOND / 2) / BYTES_PER_SECOND);
 }
 
 void PlaybackController::setLoopMode(LoopMode mode)
@@ -219,7 +238,7 @@ void PlaybackController::onVoiceReady(const dpp::voice_ready_t &event)
             activeGuildId = static_cast<uint64_t>(event.voice_client->server_id);
         }
         // Joined but with nothing to play - the idle clock starts.
-        if (!songActive && songQueue.empty()) {
+        if (!songInProgress && songQueue.empty()) {
             idleSinceSeconds = static_cast<int64_t>(time(nullptr));
         }
     }
@@ -242,7 +261,7 @@ PlaybackController::IdleInfo PlaybackController::idleInfo()
 {
     IdleInfo info;
     std::lock_guard<std::mutex> lock(stateMutex);
-    info.idle = !songActive && songQueue.empty();
+    info.idle = !songInProgress && songQueue.empty();
     info.idleSinceSeconds = idleSinceSeconds;
     info.guildId = activeGuildId;
     info.textChannelId = lastTextChannelId;
@@ -253,7 +272,7 @@ PlaybackController::SessionInfo PlaybackController::sessionInfo()
 {
     SessionInfo info;
     std::lock_guard<std::mutex> lock(stateMutex);
-    info.active = songActive || !songQueue.empty();
+    info.active = songInProgress || !songQueue.empty();
     info.channelId = activeChannelId;
     return info;
 }
@@ -286,7 +305,7 @@ void PlaybackController::playbackWorker()
             song = std::move(songQueue.front());
             songQueue.pop_front();
             voiceClient = currentVoiceClient;
-            songActive = true;
+            songInProgress = true;
             idleSinceSeconds = 0;
             currentSongLabel = renderLabel(song.title, song.webpageUrl, song.target);
         }
@@ -318,7 +337,7 @@ void PlaybackController::playbackWorker()
             }
             skipRequested = false;
 
-            songActive = false;
+            songInProgress = false;
             currentSongLabel.clear();
             if (songQueue.empty()) {
                 idleSinceSeconds = static_cast<int64_t>(time(nullptr));
@@ -451,11 +470,11 @@ void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, const 
 
     isPlaying = true;
 
-    resamplingThread = std::thread(&PlaybackController::pcmResample, this, *song.event);
-    audioThread = std::thread(&PlaybackController::streamAudio, this, voiceClient);
+    decoderThread = std::thread(&PlaybackController::pcmResample, this, *song.event);
+    senderThread = std::thread(&PlaybackController::streamAudio, this, voiceClient);
 
-    resamplingThread.join();
-    audioThread.join();
+    decoderThread.join();
+    senderThread.join();
 }
 
 void PlaybackController::stopSendingData()

@@ -79,6 +79,11 @@ public:
     // Sets the loop mode. Persists until changed or /stop turns it Off.
     void setLoopMode(LoopMode mode);
 
+    // Jumps ahead in the current song by discarding buffered PCM.
+    // Returns the whole seconds actually skipped, 0 when nothing was
+    // buffered yet, or -1 when nothing is playing at all.
+    int forward(int seconds);
+
     // Called by the bot's on_voice_ready handler once a voice connection
     // can accept audio.
     void onVoiceReady(const dpp::voice_ready_t &event);
@@ -107,6 +112,10 @@ private:
         bool isLoopReplay{false};  // song-mode repeat: suppress the "Playing:" announcement
     };
 
+    // One locked snapshot: the current song's voice client, or nullptr when
+    // no song is in progress. Callers work with the returned copy only.
+    dpp::discord_voice_client* clientIfSongInProgress();
+
     void playbackWorker();
     void resolverWorker();
     void playSong(dpp::discord_voice_client *voiceClient, const Song &song);
@@ -124,7 +133,9 @@ private:
     uint64_t activeGuildId{0};      // last known guild, survives stop/leave
     int64_t idleSinceSeconds{0};    // set when playback goes quiet
     uint64_t lastTextChannelId{0};  // farewell messages go here
-    bool songActive{false};
+    // The worker is inside playSong for some song. Stays true while paused -
+    // it tracks the song's lifecycle, not whether audio is audible.
+    bool songInProgress{false};
     LoopMode loopMode{LoopMode::Off};
     bool skipRequested{false}; // song-mode: a skipped song must not requeue itself
     std::string currentSongLabel; // pre-rendered markdown for /queue
@@ -135,8 +146,8 @@ private:
 
     // Per-song pipeline state.
     std::atomic<bool> isPlaying{false};
-    std::thread audioThread;
-    std::thread resamplingThread;
+    std::thread senderThread;
+    std::thread decoderThread;
     std::string requestedUrl;
 
     // Hand-off from playSong to pcmResample when the resolver already did

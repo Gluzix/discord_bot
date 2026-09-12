@@ -51,6 +51,7 @@ add_executable(discord_bot
   Commands/PauseCommand.h Commands/PauseCommand.cpp
   Commands/ResumeCommand.h Commands/ResumeCommand.cpp
   Commands/LoopCommand.h Commands/LoopCommand.cpp
+  Commands/ForwardCommand.h Commands/ForwardCommand.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
