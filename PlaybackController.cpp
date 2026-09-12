@@ -5,6 +5,8 @@
 #include <dpp/dpp.h>
 #include <QDebug>
 
+#include <algorithm>
+
 extern "C" {
 #include <libavutil/frame.h>
 #include <libavutil/mem.h>
@@ -100,40 +102,26 @@ size_t PlaybackController::play(const std::string &youtubeUrl, const dpp::slashc
 
 bool PlaybackController::skip()
 {
-    dpp::discord_voice_client *voiceClient = nullptr;
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         if (!songInProgress) {
             return false;
         }
-        voiceClient = currentVoiceClient;
         // Song-mode looping must not resurrect a song the user just skipped.
         skipRequested = true;
     }
 
-    // Ending the current song is enough - the worker joins its threads and
-    // advances to the next queued one on its own.
+    // Ending the current song is enough - the worker joins its threads,
+    // flushes dpp's buffer and advances to the next queued song on its own.
     stopSendingData();
-    if (voiceClient) {
-        voiceClient->stop_audio();
-    }
-
-    if (voiceClient && voiceClient->is_paused()) {
-        voiceClient->pause_audio(false);
-    }
-
     return true;
 }
 
 void PlaybackController::stop()
 {
-    dpp::discord_voice_client *voiceClient = nullptr;
-    bool wasActive = false;
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         songQueue.clear();
-        wasActive = songInProgress;
-        voiceClient = currentVoiceClient;
         // The pointer dies with the voice connection on /leave; drop it so
         // the worker can't start a queued song on a dead client. The next
         // /play or onVoiceReady provides a fresh one.
@@ -145,10 +133,9 @@ void PlaybackController::stop()
         idleSinceSeconds = static_cast<int64_t>(time(nullptr));
     }
 
+    // Ends the current song; the worker flushes dpp's buffer itself once
+    // the sender thread is gone, so nothing here touches the voice client.
     stopSendingData();
-    if (wasActive && voiceClient) {
-        voiceClient->stop_audio();
-    }
 
     // Wait (bounded) until the worker has joined the song threads, so a
     // caller about to switch channels can safely let dpp destroy the old
@@ -158,10 +145,6 @@ void PlaybackController::stop()
         stateCv.wait_for(lock, std::chrono::seconds(2), [this] {
             return !songInProgress;
         });
-    }
-
-    if (voiceClient && voiceClient->is_paused()) {
-        voiceClient->pause_audio(false);
     }
 }
 
@@ -199,6 +182,9 @@ int PlaybackController::forward(int seconds)
     if (clientIfSongInProgress() == nullptr) {
         return -1;
     }
+    if (seconds <= 0) {
+        return 0;
+    }
 
     // The decoder runs ahead of playback, so a jump is just discarding PCM
     // from our own queue. dpp's ~1s send buffer stays untouched on purpose:
@@ -219,7 +205,10 @@ int PlaybackController::forward(int seconds)
         return 0; // decoder hasn't buffered anything to skip yet
     }
 
-    return static_cast<int>((droppedBytes + BYTES_PER_SECOND / 2) / BYTES_PER_SECOND);
+    // Nearest second, but a real jump never reports as 0 - the reply would
+    // claim nothing happened.
+    int skipped = static_cast<int>((droppedBytes + BYTES_PER_SECOND / 2) / BYTES_PER_SECOND);
+    return std::max(skipped, 1);
 }
 
 void PlaybackController::setLoopMode(LoopMode mode)
@@ -473,8 +462,28 @@ void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, const 
     decoderThread = std::thread(&PlaybackController::pcmResample, this, *song.event);
     senderThread = std::thread(&PlaybackController::streamAudio, this, voiceClient);
 
-    decoderThread.join();
+    // Sender first: once it is joined, this thread is the only one on the
+    // voice client, so this is the one place that may call it after a song.
+    // It has to happen before the decoder join - a decoder stuck in yt-dlp
+    // can outlive stop()'s bounded wait, and past that the client may be gone.
     senderThread.join();
+
+    // Leftover audio means the song was cut short (skip/stop): flush dpp's
+    // ~1s buffer so the next song doesn't queue up behind this one's tail.
+    // A song that ended on its own keeps its tail. A pause dies with its song.
+    bool cutShort = false;
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        cutShort = !(decodingFinished && audioQueue.empty());
+    }
+    if (cutShort) {
+        voiceClient->stop_audio();
+    }
+    if (voiceClient->is_paused()) {
+        voiceClient->pause_audio(false);
+    }
+
+    decoderThread.join();
 }
 
 void PlaybackController::stopSendingData()
@@ -583,6 +592,13 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         return;
     }
 
+    // A skip/stop can land while yt-dlp runs - don't open a stream or
+    // announce a song nobody wants anymore.
+    if (!isPlaying) {
+        signalFinished();
+        return;
+    }
+
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         currentSongLabel = renderLabel(media.title, media.webpageUrl, requestedUrl);
@@ -629,6 +645,13 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         avformat_close_input(&format);
         currentSongFailed = true;
         notifyUser(dpp::message(messages::errorNoAudio));
+        signalFinished();
+        return;
+    }
+
+    // Same check after the (slow) network open.
+    if (!isPlaying) {
+        avformat_close_input(&format);
         signalFinished();
         return;
     }

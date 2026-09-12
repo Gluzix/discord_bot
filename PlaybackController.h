@@ -80,8 +80,8 @@ public:
     void setLoopMode(LoopMode mode);
 
     // Jumps ahead in the current song by discarding buffered PCM.
-    // Returns the whole seconds actually skipped, 0 when nothing was
-    // buffered yet, or -1 when nothing is playing at all.
+    // Returns the whole seconds actually skipped (at least 1 for any real
+    // jump), 0 when nothing was buffered yet, or -1 when nothing is playing.
     int forward(int seconds);
 
     // Called by the bot's on_voice_ready handler once a voice connection
