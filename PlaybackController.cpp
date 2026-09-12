@@ -214,7 +214,7 @@ int PlaybackController::forward(int seconds)
     // The decoder runs ahead of playback, so a jump is just discarding PCM
     // from our own queue. dpp's ~1s send buffer stays untouched on purpose:
     // flushing it means calling the voice client while the sender thread is
-    // live on it - the race that crashed.
+    // live on it, and dpp's send path has no lock against that.
     const size_t BYTES_PER_SECOND = 192000; // 48kHz * 2ch * 2 bytes
     const size_t bytesToDrop = static_cast<size_t>(seconds) * BYTES_PER_SECOND;
     size_t droppedBytes = 0;
@@ -486,6 +486,11 @@ void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, const 
         std::lock_guard<std::mutex> lock(stateMutex);
         lastResolvedAtSeconds = 0;
     }
+
+    // dpp 10.1.6 on Windows defaults to "overlap" pacing, whose sleep loop
+    // divides by a uint16_t spin counter that wraps to zero under a timing
+    // hiccup - the divide-by-zero behind the socket-thread crashes.
+    voiceClient->set_send_audio_type(dpp::discord_voice_client::satype_recorded_audio);
 
     isPlaying = true;
 
