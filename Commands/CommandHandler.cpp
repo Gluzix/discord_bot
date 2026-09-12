@@ -12,6 +12,7 @@
 #include "ResumeCommand.h"
 #include "LoopCommand.h"
 #include "ForwardCommand.h"
+#include "PlaylistCommand.h"
 #include <QDebug>
 
 CommandHandler::CommandHandler()
@@ -38,6 +39,7 @@ void CommandHandler::prepare()
     add<ResumeCommand>(playback);
     add<LoopCommand>(playback);
     add<ForwardCommand>(playback);
+    add<PlaylistCommand>(playback);
 
     if (bot) {
         // Starts a /play that was waiting for the voice handshake to finish.

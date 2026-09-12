@@ -16,6 +16,8 @@ struct voice_ready_t;
 struct slashcommand_t;
 }
 
+struct PlaylistEntry; // WindowsProcessRunner.h
+
 // Owns the whole playback pipeline: the song queue, yt-dlp resolution,
 // FFmpeg decode/resample, and the paced hand-off to DPP. A persistent
 // worker thread plays queued songs one after another; commands stay thin
@@ -64,6 +66,12 @@ public:
     // releases them once the handshake completes.
     size_t play(const std::string &youtubeUrl, const dpp::slashcommand_t &event);
 
+    // Enqueues every listed playlist entry, in order, and returns how many.
+    // The first starts right away when nothing is playing. All of them
+    // announce themselves in fresh messages, so the /playlist reply stays
+    // the summary instead of morphing into the first "Playing:".
+    size_t playPlaylist(const std::vector<PlaylistEntry> &entries, const dpp::slashcommand_t &event);
+
     // Skips the currently playing song; the worker advances to the next
     // queued one. Returns false when nothing was playing.
     bool skip();
@@ -110,7 +118,11 @@ private:
         int64_t resolvedAtSeconds{0};
         bool resolveFailed{false}; // resolver gave up; playSong retries itself
         bool isLoopReplay{false};  // song-mode repeat: suppress the "Playing:" announcement
+        bool fromPlaylist{false};  // shares the /playlist reply: no per-song queue edits
     };
+
+    // Bookkeeping shared by every enqueue. Call with stateMutex held.
+    void noteRequest(const dpp::slashcommand_t &event);
 
     // One locked snapshot: the current song's voice client, or nullptr when
     // no song is in progress. Callers work with the returned copy only.
