@@ -11,6 +11,10 @@
 #include <cstdlib>
 #include <vector>
 
+const std::string WindowsProcessRunner::YT_DLP = "yt-dlp";
+const std::string WindowsProcessRunner::YT_DLP_PATH = "C:/Users/kamil/Downloads/ytdlp/yt-dlp.exe";
+const std::string WindowsProcessRunner::YT_DLP_SONG_ARGS = "--no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print webpage_url --print urls";
+
 static bool isValidUtf8(const std::string &text)
 {
     size_t i = 0;
@@ -63,9 +67,8 @@ static std::wstring utf8ToWide(const std::string &text)
     return wide;
 }
 
-// Fallback for a yt-dlp that ignored --encoding utf-8: text arrives in the
-// ANSI code page - convert it instead of handing Discord invalid UTF-8
-// (which renders as U+FFFD).
+// yt-dlp sometimes ignores --encoding utf-8 and writes the ANSI code page
+// (cp1250 here); convert rather than hand Discord bytes it renders as U+FFFD.
 static std::string ensureUtf8(const std::string &text)
 {
     if (!text.empty() && !isValidUtf8(text)) {
@@ -99,10 +102,10 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     // The command line goes through CreateProcessW as UTF-16 - the A variant
     // would mangle non-ASCII search queries through the ANSI code page.
     PROCESS_INFORMATION processInfo{};
-    std::wstring commandToRun = utf8ToWide("yt-dlp" + args);
+    std::wstring commandToRun = utf8ToWide(YT_DLP + " " + args);
     if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo)) {
         // yt-dlp not on PATH - retry with the known local install.
-        commandToRun = utf8ToWide("\"C:/Users/kamil/Downloads/ytdlp/yt-dlp.exe\"" + args);
+        commandToRun = utf8ToWide("\"" + YT_DLP_PATH + "\" " + args);
         if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo)) {
             qDebug() << "Failed to create yt-dlp process";
             CloseHandle(readPipe);
@@ -114,12 +117,15 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     // Parent must close its copy of the write end or ReadFile never sees EOF.
     CloseHandle(writePipe);
 
+
     std::string output;
-    char buffer[4096];
+    char buffer[PIPE_READ_CHUNK];
     DWORD bytesRead = 0;
+
     while (ReadFile(readPipe, buffer, sizeof(buffer), &bytesRead, nullptr) && bytesRead > 0) {
         output.append(buffer, bytesRead);
     }
+
     CloseHandle(readPipe);
 
     WaitForSingleObject(processInfo.hProcess, 30000);
@@ -153,7 +159,7 @@ ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &target)
     // direct media URL on consecutive lines, in one process. Without
     // --encoding utf-8, yt-dlp writes pipe output in the ANSI code page
     // (cp1250 here), which turns Polish titles into mojibake on Discord.
-    YtDlpOutput run = runYtDlp(" --no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print webpage_url --print urls \"" + target + "\"");
+    YtDlpOutput run = runYtDlp(YT_DLP_SONG_ARGS + " \"" + target + "\"");
     const std::vector<std::string> &lines = run.lines;
 
     if (run.exitCode != 0 || lines.empty() || lines.back().rfind("http", 0) != 0) {
@@ -178,7 +184,7 @@ PlaylistListing WindowsProcessRunner::listPlaylist(const std::string &playlistUr
     // --flat-playlist lists entries without extracting any video, so even a
     // 6000-video playlist answers in a few seconds. Each entry prints as a
     // url/title line pair; the "playlist:" prints come once, after them.
-    const std::string args = " --flat-playlist --no-warnings --socket-timeout 10 --encoding utf-8"
+    const std::string args = "--flat-playlist --no-warnings --socket-timeout 10 --encoding utf-8"
         " --playlist-items :" + std::to_string(maxEntries) +
         " --print url --print title"
         " --print \"playlist:PLAYLIST_TITLE=%(title)s\""

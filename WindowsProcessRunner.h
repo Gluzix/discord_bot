@@ -43,4 +43,10 @@ private:
         std::vector<std::string> lines; // stdout split into non-empty lines
     };
     static YtDlpOutput runYtDlp(const std::string &args);
+
+    static const int PIPE_READ_CHUNK = 4096;
+    static const std::string YT_DLP;
+    static const std::string YT_DLP_PATH;
+    static const std::string YT_DLP_SONG_ARGS;
 };
+
