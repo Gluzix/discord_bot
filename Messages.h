@@ -16,6 +16,18 @@ inline constexpr const char* queuedAtPrefix   = "Queued at position ";
 inline constexpr const char* queuedSeparator  = ": ";
 inline constexpr const char* playingPrefix    = "Playing: ";
 inline constexpr const char* searchLabelPrefix = "search: ";
+inline constexpr const char* usePlaylistCommand = "That's a playlist - use /playlist for it!";
+
+// /playlist
+inline constexpr const char* invalidPlaylistInput    = "Give me a YouTube playlist link (one with list= in it)!";
+inline constexpr const char* readingPlaylist         = "Reading the playlist...";
+inline constexpr const char* playlistEmpty           = "Couldn't find any playable videos in that playlist :(";
+inline constexpr const char* playlistQueuedPrefix    = "Queued ";
+inline constexpr const char* playlistQueuedOne       = " song from ";
+inline constexpr const char* playlistQueuedMany      = " songs from ";
+inline constexpr const char* playlistFallbackName    = "the playlist";
+inline constexpr const char* playlistTruncatedPrefix = " (it has ";
+inline constexpr const char* playlistTruncatedSuffix = " - I took the first ones)";
 
 // playback errors
 inline constexpr const char* errorResolve     = "Couldn't get the audio from that link :(";

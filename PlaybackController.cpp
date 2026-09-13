@@ -80,17 +80,7 @@ size_t PlaybackController::play(const std::string &youtubeUrl, const dpp::slashc
         song.wasQueued = busy;
         song.event = std::make_unique<dpp::slashcommand_t>(event);
         songQueue.push_back(std::move(song));
-
-        idleSinceSeconds = 0;
-        lastTextChannelId = event.command.channel_id;
-
-        // A ready voice connection travels with the request; if the
-        // handshake is still in flight, songs simply wait in the queue
-        // until onVoiceReady provides the client.
-        dpp::voiceconn* vc = event.from()->get_voice(event.command.guild_id);
-        if (vc && vc->voiceclient && vc->voiceclient->is_ready()) {
-            currentVoiceClient = vc->voiceclient.get();
-        }
+        noteRequest(event);
 
         if (busy) {
             waitingPosition = songQueue.size();
@@ -98,6 +88,41 @@ size_t PlaybackController::play(const std::string &youtubeUrl, const dpp::slashc
     }
     stateCv.notify_all();
     return waitingPosition;
+}
+
+size_t PlaybackController::playPlaylist(const std::vector<PlaylistEntry> &entries, const dpp::slashcommand_t &event)
+{
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        for (const PlaylistEntry &entry : entries) {
+            Song song;
+            song.id = nextSongId++;
+            song.target = entry.webpageUrl;
+            song.title = entry.title; // /queue shows real titles right away
+            song.webpageUrl = entry.webpageUrl;
+            song.wasQueued = true;    // every "Playing:" goes out as a fresh message
+            song.fromPlaylist = true;
+            song.event = std::make_unique<dpp::slashcommand_t>(event);
+            songQueue.push_back(std::move(song));
+        }
+        noteRequest(event);
+    }
+    stateCv.notify_all();
+    return entries.size();
+}
+
+// The idle clock stops, farewells know where to go, and a ready voice
+// connection travels with the request. If the handshake is still in flight,
+// songs simply wait in the queue until onVoiceReady provides the client.
+void PlaybackController::noteRequest(const dpp::slashcommand_t &event)
+{
+    idleSinceSeconds = 0;
+    lastTextChannelId = event.command.channel_id;
+
+    dpp::voiceconn* vc = event.from()->get_voice(event.command.guild_id);
+    if (vc && vc->voiceclient && vc->voiceclient->is_ready()) {
+        currentVoiceClient = vc->voiceclient.get();
+    }
 }
 
 bool PlaybackController::skip()
@@ -189,7 +214,7 @@ int PlaybackController::forward(int seconds)
     // The decoder runs ahead of playback, so a jump is just discarding PCM
     // from our own queue. dpp's ~1s send buffer stays untouched on purpose:
     // flushing it means calling the voice client while the sender thread is
-    // live on it - the race that crashed.
+    // live on it, and dpp's send path has no lock against that.
     const size_t BYTES_PER_SECOND = 192000; // 48kHz * 2ch * 2 bytes
     const size_t bytesToDrop = static_cast<size_t>(seconds) * BYTES_PER_SECOND;
     size_t droppedBytes = 0;
@@ -337,36 +362,37 @@ void PlaybackController::playbackWorker()
     }
 }
 
-// Resolves queued songs ahead of time: titles show up in /queue and the
-// "Queued at position N" replies, and playSong can start a prefetched song
-// without the multi-second yt-dlp pause between tracks.
+// Resolves the next few queued songs ahead of time: titles show up in /queue
+// and the "Queued at position N" replies, and playSong can start a prefetched
+// song without the multi-second yt-dlp pause between tracks. Only a short
+// lookahead - direct urls expire within hours, so resolving a 100-song
+// playlist up front would be a hundred wasted yt-dlp runs.
 void PlaybackController::resolverWorker()
 {
+    static constexpr size_t LOOKAHEAD = 5;
+    auto nextUnresolved = [this]() -> const Song* { // call with stateMutex held
+        for (size_t i = 0; i < songQueue.size() && i < LOOKAHEAD; ++i) {
+            if (songQueue[i].directUrl.empty() && !songQueue[i].resolveFailed) {
+                return &songQueue[i];
+            }
+        }
+        return nullptr;
+    };
+
     while (running) {
         uint64_t songId = 0;
         std::string target;
         {
             std::unique_lock<std::mutex> lock(stateMutex);
-            stateCv.wait(lock, [this] {
-                if (!running) {
-                    return true;
-                }
-                for (const Song &song : songQueue) {
-                    if (song.directUrl.empty() && !song.resolveFailed) {
-                        return true;
-                    }
-                }
-                return false;
+            stateCv.wait(lock, [this, &nextUnresolved] {
+                return !running || nextUnresolved() != nullptr;
             });
             if (!running) {
                 break;
             }
-            for (const Song &song : songQueue) {
-                if (song.directUrl.empty() && !song.resolveFailed) {
-                    songId = song.id;
-                    target = song.target;
-                    break;
-                }
+            if (const Song *song = nextUnresolved()) {
+                songId = song->id;
+                target = song->target;
             }
         }
         if (songId == 0) {
@@ -394,9 +420,12 @@ void PlaybackController::resolverWorker()
                     song.webpageUrl = media.webpageUrl;
                     song.directUrl = media.directUrl;
                     song.resolvedAtSeconds = static_cast<int64_t>(time(nullptr));
-                    label = renderLabel(song.title, song.webpageUrl, song.target);
-                    position = i + 1;
-                    requestEvent = std::make_unique<dpp::slashcommand_t>(*song.event);
+                    // Playlist entries share one reply, the summary - leave it be.
+                    if (!song.fromPlaylist) {
+                        label = renderLabel(song.title, song.webpageUrl, song.target);
+                        position = i + 1;
+                        requestEvent = std::make_unique<dpp::slashcommand_t>(*song.event);
+                    }
                 }
                 break;
             }
@@ -423,6 +452,7 @@ PlaybackController::Song PlaybackController::makeReplay(const Song &song, bool l
     replay.directUrl = song.directUrl;
     replay.resolvedAtSeconds = song.resolvedAtSeconds;
     replay.isLoopReplay = loopReplay;
+    replay.fromPlaylist = song.fromPlaylist;
     return replay;
 }
 
@@ -456,6 +486,11 @@ void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, const 
         std::lock_guard<std::mutex> lock(stateMutex);
         lastResolvedAtSeconds = 0;
     }
+
+    // dpp 10.1.6 on Windows defaults to "overlap" pacing, whose sleep loop
+    // divides by a uint16_t spin counter that wraps to zero under a timing
+    // hiccup - the divide-by-zero behind the socket-thread crashes.
+    voiceClient->set_send_audio_type(dpp::discord_voice_client::satype_recorded_audio);
 
     isPlaying = true;
 
