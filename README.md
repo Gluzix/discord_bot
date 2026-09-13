@@ -1,4 +1,4 @@
-# discord_bot
+# Discord music bot written in C++
 
 A Discord music bot in C++ that streams YouTube audio into a voice channel. Paste a link, a playlist, or just a song title, and it plays.
 
