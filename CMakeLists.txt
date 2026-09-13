@@ -54,6 +54,8 @@ add_executable(discord_bot
   Commands/LoopCommand.h Commands/LoopCommand.cpp
   Commands/ForwardCommand.h Commands/ForwardCommand.cpp
   Commands/PlaylistCommand.h Commands/PlaylistCommand.cpp
+  PcmResampler.h PcmResampler.cpp
+  LabelCreator.h LabelCreator.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
