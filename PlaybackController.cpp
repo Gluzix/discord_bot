@@ -1,21 +1,13 @@
 #include "PlaybackController.h"
 #include "WindowsProcessRunner.h"
 #include "Messages.h"
-#include "LabelCreator.h"
+#include "Labels.h"
 #include "PcmResampler.h"
 
 #include <dpp/dpp.h>
 #include <QDebug>
 
 #include <algorithm>
-
-extern "C" {
-#include <libavutil/frame.h>
-#include <libavutil/mem.h>
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libswresample/swresample.h>
-}
 
 PlaybackController::PlaybackController()
 {
@@ -272,7 +264,7 @@ PlaybackController::QueueSnapshot PlaybackController::queueSnapshot()
     snapshot.current = currentSongLabel;
     snapshot.loop = loopMode;
     for (const Song &song : songQueue) {
-        snapshot.queued.push_back(LabelCreator::renderLabel(song.title, song.webpageUrl, song.target));
+        snapshot.queued.push_back(labels::render(song.title, song.webpageUrl, song.target));
     }
     return snapshot;
 }
@@ -295,7 +287,7 @@ void PlaybackController::playbackWorker()
             voiceClient = currentVoiceClient;
             songInProgress = true;
             idleSinceSeconds = 0;
-            currentSongLabel = LabelCreator::renderLabel(song.title, song.webpageUrl, song.target);
+            currentSongLabel = labels::render(song.title, song.webpageUrl, song.target);
         }
 
         // Blocks until the song ends naturally or is skipped/stopped;
@@ -396,7 +388,7 @@ void PlaybackController::resolverWorker()
                     song.resolvedAtSeconds = static_cast<int64_t>(time(nullptr));
                     // Playlist entries share one reply, the summary - leave it be.
                     if (!song.fromPlaylist) {
-                        label = LabelCreator::renderLabel(song.title, song.webpageUrl, song.target);
+                        label = labels::render(song.title, song.webpageUrl, song.target);
                         position = i + 1;
                         requestEvent = std::make_unique<dpp::slashcommand_t>(*song.event);
                     }
@@ -599,20 +591,16 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
 
     {
         std::lock_guard<std::mutex> lock(stateMutex);
-        currentSongLabel = LabelCreator::renderLabel(media.title, media.webpageUrl, requestedUrl);
+        currentSongLabel = labels::render(media.title, media.webpageUrl, requestedUrl);
     }
 
-    auto fail = [&](const char *msg){
-        notifyUser(dpp::message(msg));
+    auto fail = [&](const char *msg) {
         currentSongFailed = true;
-        return;
+        notifyUser(dpp::message(msg));
     };
 
     PcmResampler resampler(dpp::send_audio_raw_max_length);
-
-
-    PcmResampler::Result res = resampler.open(media.directUrl);
-    switch (res) {
+    switch (resampler.open(media.directUrl)) {
         case PcmResampler::Result::OpenFailed: fail(messages::errorOpenStream); return;
         case PcmResampler::Result::ReadFailed: fail(messages::errorReadStream); return;
         case PcmResampler::Result::NoAudio: fail(messages::errorNoAudio); return;
@@ -626,13 +614,18 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     // as a masked link: clickable title, no embed preview. Song-mode loop
     // replays stay quiet - nobody needs the same title announced 20 times.
     if (!currentSongIsLoopReplay) {
-        dpp::message nowPlaying(messages::playingPrefix + LabelCreator::renderLabel(media.title, media.webpageUrl, requestedUrl));
+        dpp::message nowPlaying(messages::playingPrefix + labels::render(media.title, media.webpageUrl, requestedUrl));
         nowPlaying.set_allowed_mentions();
         notifyUser(nowPlaying);
     }
 
-    resampler.run([this](std::vector<uint8_t> pkt){
-        {std::lock_guard<std::mutex> lock(queueMutex); audioQueue.push(std::move(pkt));}
-        queueCv.notify_one();
-    }, [this](){ return isPlaying.load();});
+    resampler.run(
+        [this](std::vector<uint8_t> pkt) {
+            {
+                std::lock_guard<std::mutex> lock(queueMutex);
+                audioQueue.push(std::move(pkt));
+            }
+            queueCv.notify_one();
+        },
+        [this] { return isPlaying.load(); });
 }

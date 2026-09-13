@@ -1,45 +1,39 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
-#include <queue>
-#include <condition_variable>
+#include <vector>
 
-class AVFormatContext;
-class AVCodecContext;
-class SwrContext;
+struct AVFormatContext;
+struct AVCodecContext;
+struct SwrContext;
 
-namespace dpp {
-class discord_voice_client;
-struct voice_ready_t;
-struct slashcommand_t;
-struct message;
-}
-
-class ResolvedMedia;
-
+// Decodes one media url into 48kHz s16 stereo PCM, handed out as packets of
+// a fixed size. Knows nothing about threads, queues, or Discord.
 class PcmResampler
 {
 public:
-    enum class Result {Ok, OpenFailed, ReadFailed, NoAudio};
+    enum class Result { Ok, OpenFailed, ReadFailed, NoAudio };
     using PacketSink = std::function<void(std::vector<uint8_t>)>;
 
-    PcmResampler(size_t packetBytes_);
+    explicit PcmResampler(size_t packetBytes_);
     ~PcmResampler();
 
-    void pcmResample(dpp::slashcommand_t event, const ResolvedMedia &media);
+    PcmResampler(const PcmResampler &) = delete;
+    PcmResampler &operator=(const PcmResampler &) = delete;
 
+    // Opens the stream and sets up the decoder and resampler; nothing is
+    // read until run(). Everything allocated here is freed by the destructor.
     Result open(const std::string &directUrl);
+
     // Runs until the stream ends or keepGoing() turns false. Every packet is
     // exactly packetBytes; only the last may be shorter.
     void run(const PacketSink &sink, const std::function<bool()> &keepGoing);
 
 private:
-    // std::queue<std::vector<uint8_t>> &audioQueue;
-    // std::condition_variable &queueCv;
-
     AVFormatContext *format{nullptr};
-    AVCodecContext *codec_ctx{nullptr};
+    AVCodecContext *codecContext{nullptr};
     SwrContext *swr{nullptr};
     int audioStream{-1};
     size_t packetBytes;

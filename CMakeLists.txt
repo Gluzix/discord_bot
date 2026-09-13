@@ -55,7 +55,7 @@ add_executable(discord_bot
   Commands/ForwardCommand.h Commands/ForwardCommand.cpp
   Commands/PlaylistCommand.h Commands/PlaylistCommand.cpp
   PcmResampler.h PcmResampler.cpp
-  LabelCreator.h LabelCreator.cpp
+  Labels.h Labels.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
@@ -66,6 +66,9 @@ target_include_directories(discord_bot PRIVATE
 )
 
 target_link_libraries(discord_bot Qt${QT_VERSION_MAJOR}::Core dpp winmm)
+
+# A function that can fall off its end without returning is a bug, not a warning.
+target_compile_options(discord_bot PRIVATE /we4715)
 target_link_libraries(discord_bot
     FFmpeg::avcodec
     FFmpeg::avformat

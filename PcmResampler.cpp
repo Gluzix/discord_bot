@@ -1,11 +1,8 @@
 #include "PcmResampler.h"
-#include "WindowsProcessRunner.h"
-#include "Messages.h"
-#include "LabelCreator.h"
 
 #include <QDebug>
 
-#include <algorithm>
+#include <chrono>
 
 extern "C" {
 #include <libavutil/frame.h>
@@ -17,13 +14,13 @@ extern "C" {
 
 PcmResampler::PcmResampler(size_t packetBytes_)
     : packetBytes(packetBytes_)
-
-{}
+{
+}
 
 PcmResampler::~PcmResampler()
 {
     swr_free(&swr);
-    avcodec_free_context(&codec_ctx);
+    avcodec_free_context(&codecContext);
     avformat_close_input(&format);
 }
 
@@ -51,55 +48,56 @@ PcmResampler::Result PcmResampler::open(const std::string &directUrl)
     errorCode = avformat_find_stream_info(format, nullptr);
     if (errorCode != 0) {
         qDebug() << "Cannot find stream info! avformat_find_stream_info returned with " << errorCode;
-        avformat_close_input(&format);
         return Result::ReadFailed;
     }
 
     audioStream = av_find_best_stream(format, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (audioStream < 0) {
         qDebug() << "Couldn't find audio stream! av_find_best_stream returned with " << audioStream;
-        avformat_close_input(&format);
+        return Result::NoAudio;
+    }
+
+    const AVCodecParameters *params = format->streams[audioStream]->codecpar;
+    const AVCodec *decoder = avcodec_find_decoder(params->codec_id);
+    if (decoder == nullptr) {
+        qDebug() << "No decoder for codec id" << params->codec_id;
+        return Result::NoAudio;
+    }
+    codecContext = avcodec_alloc_context3(decoder);
+    avcodec_parameters_to_context(codecContext, params);
+    if (avcodec_open2(codecContext, decoder, nullptr) < 0) {
+        qDebug() << "avcodec_open2 failed";
+        return Result::NoAudio;
+    }
+
+    AVChannelLayout outLayout = AV_CHANNEL_LAYOUT_STEREO;
+    swr_alloc_set_opts2(&swr, &outLayout, AV_SAMPLE_FMT_S16, 48000,
+                        &codecContext->ch_layout, codecContext->sample_fmt, codecContext->sample_rate,
+                        0, nullptr);
+    if (swr_init(swr) < 0) {
+        qDebug() << "swr_init failed";
         return Result::NoAudio;
     }
 
     return Result::Ok;
 }
 
-void PcmResampler::run(const PacketSink &sink,
-                       const std::function<bool ()> &keepGoing)
+void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keepGoing)
 {
-    // Same check after the (slow) network open.
-    if (!keepGoing()) {
-        avformat_close_input(&format);
+    Q_ASSERT(sink && keepGoing); // callers must wire both
+    if (!sink || !keepGoing) {
         return;
     }
-
-    const AVCodec *codec = avcodec_find_decoder(format->streams[audioStream]->codecpar->codec_id);
-    codec_ctx = avcodec_alloc_context3(codec);
-
-    avcodec_parameters_to_context(codec_ctx, format->streams[audioStream]->codecpar);
-    avcodec_open2(codec_ctx, codec, nullptr);
-
-    AVChannelLayout out_ch_layout = AV_CHANNEL_LAYOUT_STEREO;
-    AVChannelLayout in_ch_layout = codec_ctx->ch_layout;
-
-    swr_alloc_set_opts2(&swr, &out_ch_layout,
-                        AV_SAMPLE_FMT_S16,
-                        48000,
-                        &in_ch_layout,
-                        codec_ctx->sample_fmt,
-                        codec_ctx->sample_rate,
-                        0, nullptr);
-
-    swr_init(swr);
+    if (!keepGoing()) {
+        return; // skip or stop landed between open() and run()
+    }
 
     AVPacket *packet = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
 
-    // The queue carries ready-to-send packets of exactly PACKET_SIZE bytes.
-    // DPP drops the remainder of larger sends and silence-pads smaller ones,
-    // so the invariant is enforced here, at the single point of production.
-    const size_t PACKET_SIZE = packetBytes;
+    // Packets are exactly packetBytes. DPP drops the remainder of larger
+    // sends and silence-pads smaller ones, so the invariant is enforced
+    // here, at the single point of production.
     const size_t BYTES_PER_SAMPLE_PAIR = 4; // s16 stereo
     std::vector<uint8_t> staging;
 
@@ -115,12 +113,9 @@ void PcmResampler::run(const PacketSink &sink,
 
     auto pushFullPackets = [&]() {
         size_t readPos = 0;
-        while (staging.size() - readPos >= PACKET_SIZE) {
-            std::vector<uint8_t> pkt(staging.begin() + readPos,
-                                     staging.begin() + readPos + PACKET_SIZE);
-
-            sink(pkt);
-            readPos += PACKET_SIZE;
+        while (staging.size() - readPos >= packetBytes) {
+            sink(std::vector<uint8_t>(staging.begin() + readPos, staging.begin() + readPos + packetBytes));
+            readPos += packetBytes;
         }
         staging.erase(staging.begin(), staging.begin() + readPos);
     };
@@ -142,12 +137,12 @@ void PcmResampler::run(const PacketSink &sink,
         }
 
         auto t2 = std::chrono::steady_clock::now();
-        if (avcodec_send_packet(codec_ctx, packet) < 0) {
+        if (avcodec_send_packet(codecContext, packet) < 0) {
             av_packet_unref(packet);
             continue;
         }
 
-        while (avcodec_receive_frame(codec_ctx, frame) >= 0) {
+        while (avcodec_receive_frame(codecContext, frame) >= 0) {
             convertIntoStaging((const uint8_t**)frame->data, frame->nb_samples);
             pushFullPackets();
             av_frame_unref(frame);
@@ -162,16 +157,13 @@ void PcmResampler::run(const PacketSink &sink,
     qDebug() << "Total decode/resample time: " << std::chrono::duration_cast<std::chrono::milliseconds>(decodeTime).count() << "ms";
 
     // Drain the resampler; only this last packet may be shorter than
-    // PACKET_SIZE - DPP silence-pads it, inaudible at end of stream.
+    // packetBytes - DPP silence-pads it, inaudible at end of stream.
     convertIntoStaging(nullptr, 0);
     pushFullPackets();
     if (!staging.empty()) {
-        sink(staging);
+        sink(std::move(staging));
     }
 
     av_packet_free(&packet);
     av_frame_free(&frame);
-    swr_free(&swr);
-    avcodec_free_context(&codec_ctx);
-    avformat_close_input(&format);
 }
