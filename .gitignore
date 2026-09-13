@@ -1,2 +1,4 @@
 # Ignore Everything
 CMakeLists.txt.user
+# Bot token - never commit it
+token.json
