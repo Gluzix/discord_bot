@@ -72,9 +72,10 @@ public:
     // the summary instead of morphing into the first "Playing:".
     size_t playPlaylist(const std::vector<PlaylistEntry> &entries, const dpp::slashcommand_t &event);
 
-    // Skips the currently playing song; the worker advances to the next
-    // queued one. Returns false when nothing was playing.
-    bool skip();
+    // Skips the current song and, for count > 1, the next count-1 queued
+    // ones too (queue-loop mode rotates them to the back instead).
+    // Returns how many songs went, 0 when nothing was playing.
+    size_t skip(size_t count = 1);
 
     // Stops the current song and clears the whole queue. Safe to call when
     // nothing is playing. The worker thread stays alive for the next /play.
