@@ -91,12 +91,21 @@ void PlaybackController::noteRequest(const dpp::slashcommand_t &event)
     }
 }
 
-bool PlaybackController::skip()
+size_t PlaybackController::skip(size_t count)
 {
+    size_t fromQueue = 0;
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         if (!songInProgress) {
-            return false;
+            return 0;
+        }
+        // The current song counts as one; the rest come off the front of
+        // the queue. Queue-loop mode keeps them in the rotation.
+        fromQueue = std::min(count > 0 ? count - 1 : 0, songQueue.size());
+        if (loopMode == LoopMode::Queue) {
+            std::rotate(songQueue.begin(), songQueue.begin() + fromQueue, songQueue.end());
+        } else {
+            songQueue.erase(songQueue.begin(), songQueue.begin() + fromQueue);
         }
         // Song-mode looping must not resurrect a song the user just skipped.
         skipRequested = true;
@@ -105,7 +114,7 @@ bool PlaybackController::skip()
     // Ending the current song is enough - the worker joins its threads,
     // flushes dpp's buffer and advances to the next queued song on its own.
     stopSendingData();
-    return true;
+    return 1 + fromQueue;
 }
 
 void PlaybackController::stop()
