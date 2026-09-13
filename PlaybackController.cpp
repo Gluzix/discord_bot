@@ -545,15 +545,11 @@ void PlaybackController::streamAudio(dpp::discord_voice_client *voiceClient)
 
 void PlaybackController::pcmResample(dpp::slashcommand_t event)
 {
-    // Whatever happens here, the sender thread waits on the queue and must
-    // be released - every exit path has to mark decoding as finished.
-    auto signalFinished = [this]() {
-        {
-            std::lock_guard<std::mutex> lock(queueMutex);
-            decodingFinished = true;
-        }
+    struct FinishGuard { std::function<void()> done; ~FinishGuard() { if (done) done(); } };
+    FinishGuard finish{[this] {
+        { std::lock_guard<std::mutex> lock(queueMutex); decodingFinished = true; }
         queueCv.notify_one();
-    };
+    }};
 
     // A queued song announces itself in a fresh channel message, leaving its
     // "Queued at position N" reply intact as history (also immune to the
@@ -592,14 +588,12 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
     if (media.directUrl.empty()) {
         currentSongFailed = true;
         notifyUser(dpp::message(messages::errorResolve));
-        signalFinished();
         return;
     }
 
     // A skip/stop can land while yt-dlp runs - don't open a stream or
     // announce a song nobody wants anymore.
     if (!isPlaying) {
-        signalFinished();
         return;
     }
 
@@ -608,8 +602,37 @@ void PlaybackController::pcmResample(dpp::slashcommand_t event)
         currentSongLabel = LabelCreator::renderLabel(media.title, media.webpageUrl, requestedUrl);
     }
 
-    std::string directUrl = media.directUrl;
+    auto fail = [&](const char *msg){
+        notifyUser(dpp::message(msg));
+        currentSongFailed = true;
+        return;
+    };
 
-    PcmResampler resampler(audioQueue, isPlaying, queueCv, queueMutex, currentSongFailed, currentSongIsLoopReplay, requestedUrl);
-    resampler.pcmResample(event, media);
+    PcmResampler resampler(dpp::send_audio_raw_max_length);
+
+
+    PcmResampler::Result res = resampler.open(media.directUrl);
+    switch (res) {
+        case PcmResampler::Result::OpenFailed: fail(messages::errorOpenStream); return;
+        case PcmResampler::Result::ReadFailed: fail(messages::errorReadStream); return;
+        case PcmResampler::Result::NoAudio: fail(messages::errorNoAudio); return;
+        case PcmResampler::Result::Ok: break;
+    }
+
+    if (!isPlaying) return;
+
+    // The title is untrusted input from the video page - disable every kind
+    // of mention so a title like "@everyone" can't ping the server. Rendered
+    // as a masked link: clickable title, no embed preview. Song-mode loop
+    // replays stay quiet - nobody needs the same title announced 20 times.
+    if (!currentSongIsLoopReplay) {
+        dpp::message nowPlaying(messages::playingPrefix + LabelCreator::renderLabel(media.title, media.webpageUrl, requestedUrl));
+        nowPlaying.set_allowed_mentions();
+        notifyUser(nowPlaying);
+    }
+
+    resampler.run([this](std::vector<uint8_t> pkt){
+        {std::lock_guard<std::mutex> lock(queueMutex); audioQueue.push(std::move(pkt));}
+        queueCv.notify_one();
+    }, [this](){ return isPlaying.load();});
 }

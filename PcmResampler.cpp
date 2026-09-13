@@ -3,7 +3,6 @@
 #include "Messages.h"
 #include "LabelCreator.h"
 
-#include <dpp/dpp.h>
 #include <QDebug>
 
 #include <algorithm>
@@ -16,36 +15,20 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-PcmResampler::PcmResampler(std::queue<std::vector<uint8_t>> &audioQueue_,
-                           std::atomic<bool> &isPlaying_,
-                           std::condition_variable &queueCv_, std::mutex &queueMutex_, bool &currentSongFailed_, bool &currentSongIsLoopReplay_, std::string requestedUrl_)
-    : audioQueue(audioQueue_)
-    , isPlaying(isPlaying_)
-    , queueCv(queueCv_)
-    , queueMutex(queueMutex_)
-    , currentSongFailed(currentSongFailed_)
-    , currentSongIsLoopReplay(currentSongIsLoopReplay_)
-    , requestedUrl(requestedUrl_)
+PcmResampler::PcmResampler(size_t packetBytes_)
+    : packetBytes(packetBytes_)
+
 {}
 
-void PcmResampler::setNotifyUser(const std::function<void (dpp::message)> &notifyUser_)
+PcmResampler::~PcmResampler()
 {
-    if (notifyUser_) {
-        notifyUser = notifyUser_;
-    }
+    swr_free(&swr);
+    avcodec_free_context(&codec_ctx);
+    avformat_close_input(&format);
 }
 
-void PcmResampler::setSignalFinished(std::function<void ()> &signalFinished_)
+PcmResampler::Result PcmResampler::open(const std::string &directUrl)
 {
-    if (signalFinished_) {
-        signalFinished = signalFinished_;
-    }
-}
-
-void PcmResampler::pcmResample(dpp::slashcommand_t event, const ResolvedMedia &media)
-{
-    std::string directUrl = media.directUrl;
-
     AVDictionary *options = nullptr;
     av_dict_set(&options, "headers",
                 "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n",
@@ -55,7 +38,6 @@ void PcmResampler::pcmResample(dpp::slashcommand_t event, const ResolvedMedia &m
     av_dict_set(&options, "reconnect_streamed", "1", 0);
     av_dict_set(&options, "reconnect_delay_max", "5", 0);
     av_dict_set(&options, "multiple_requests", "1", 0);
-    AVFormatContext *format = nullptr;
     int errorCode = avformat_open_input(&format, directUrl.c_str(), nullptr, &options);
     av_dict_free(&options); // open_input consumed what it needed
 
@@ -63,56 +45,41 @@ void PcmResampler::pcmResample(dpp::slashcommand_t event, const ResolvedMedia &m
         char errbuf[256];
         av_strerror(errorCode, errbuf, sizeof(errbuf));
         qDebug() << "Cannot open input! avformat_open_input returned with " << errorCode << errbuf;
-        currentSongFailed = true;
-        notifyUser(dpp::message(messages::errorOpenStream));
-        signalFinished();
-        return;
+        return Result::OpenFailed;
     }
 
     errorCode = avformat_find_stream_info(format, nullptr);
     if (errorCode != 0) {
         qDebug() << "Cannot find stream info! avformat_find_stream_info returned with " << errorCode;
         avformat_close_input(&format);
-        currentSongFailed = true;
-        notifyUser(dpp::message(messages::errorReadStream));
-        signalFinished();
-        return;
+        return Result::ReadFailed;
     }
 
-    int audioStream = av_find_best_stream(format, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    audioStream = av_find_best_stream(format, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (audioStream < 0) {
         qDebug() << "Couldn't find audio stream! av_find_best_stream returned with " << audioStream;
         avformat_close_input(&format);
-        currentSongFailed = true;
-        notifyUser(dpp::message(messages::errorNoAudio));
-        signalFinished();
-        return;
+        return Result::NoAudio;
     }
 
+    return Result::Ok;
+}
+
+void PcmResampler::run(const PacketSink &sink,
+                       const std::function<bool ()> &keepGoing)
+{
     // Same check after the (slow) network open.
-    if (!isPlaying) {
+    if (!keepGoing()) {
         avformat_close_input(&format);
-        signalFinished();
         return;
-    }
-
-    // The title is untrusted input from the video page - disable every kind
-    // of mention so a title like "@everyone" can't ping the server. Rendered
-    // as a masked link: clickable title, no embed preview. Song-mode loop
-    // replays stay quiet - nobody needs the same title announced 20 times.
-    if (!currentSongIsLoopReplay) {
-        dpp::message nowPlaying(messages::playingPrefix + LabelCreator::renderLabel(media.title, media.webpageUrl, requestedUrl));
-        nowPlaying.set_allowed_mentions();
-        notifyUser(nowPlaying);
     }
 
     const AVCodec *codec = avcodec_find_decoder(format->streams[audioStream]->codecpar->codec_id);
-    AVCodecContext* codec_ctx = avcodec_alloc_context3(codec);
+    codec_ctx = avcodec_alloc_context3(codec);
 
     avcodec_parameters_to_context(codec_ctx, format->streams[audioStream]->codecpar);
     avcodec_open2(codec_ctx, codec, nullptr);
 
-    SwrContext* swr = nullptr;
     AVChannelLayout out_ch_layout = AV_CHANNEL_LAYOUT_STEREO;
     AVChannelLayout in_ch_layout = codec_ctx->ch_layout;
 
@@ -132,7 +99,7 @@ void PcmResampler::pcmResample(dpp::slashcommand_t event, const ResolvedMedia &m
     // The queue carries ready-to-send packets of exactly PACKET_SIZE bytes.
     // DPP drops the remainder of larger sends and silence-pads smaller ones,
     // so the invariant is enforced here, at the single point of production.
-    const size_t PACKET_SIZE = dpp::send_audio_raw_max_length;
+    const size_t PACKET_SIZE = packetBytes;
     const size_t BYTES_PER_SAMPLE_PAIR = 4; // s16 stereo
     std::vector<uint8_t> staging;
 
@@ -151,11 +118,8 @@ void PcmResampler::pcmResample(dpp::slashcommand_t event, const ResolvedMedia &m
         while (staging.size() - readPos >= PACKET_SIZE) {
             std::vector<uint8_t> pkt(staging.begin() + readPos,
                                      staging.begin() + readPos + PACKET_SIZE);
-            {
-                std::lock_guard<std::mutex> lock(queueMutex);
-                audioQueue.push(std::move(pkt));
-            }
-            queueCv.notify_one();
+
+            sink(pkt);
             readPos += PACKET_SIZE;
         }
         staging.erase(staging.begin(), staging.begin() + readPos);
@@ -164,7 +128,7 @@ void PcmResampler::pcmResample(dpp::slashcommand_t event, const ResolvedMedia &m
     auto readTime = std::chrono::steady_clock::duration::zero();
     auto decodeTime = std::chrono::steady_clock::duration::zero();
 
-    while (isPlaying) {
+    while (keepGoing()) {
         auto t0 = std::chrono::steady_clock::now();
         int ret = av_read_frame(format, packet);
         auto t1 = std::chrono::steady_clock::now();
@@ -202,11 +166,7 @@ void PcmResampler::pcmResample(dpp::slashcommand_t event, const ResolvedMedia &m
     convertIntoStaging(nullptr, 0);
     pushFullPackets();
     if (!staging.empty()) {
-        {
-            std::lock_guard<std::mutex> lock(queueMutex);
-            audioQueue.push(std::move(staging));
-        }
-        queueCv.notify_one();
+        sink(staging);
     }
 
     av_packet_free(&packet);
@@ -214,6 +174,4 @@ void PcmResampler::pcmResample(dpp::slashcommand_t event, const ResolvedMedia &m
     swr_free(&swr);
     avcodec_free_context(&codec_ctx);
     avformat_close_input(&format);
-
-    signalFinished();
 }
