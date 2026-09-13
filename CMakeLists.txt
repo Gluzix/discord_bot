@@ -63,7 +63,7 @@ target_include_directories(discord_bot PRIVATE
     "C:/vcpkg/installed/x64-windows/include"
 )
 
-target_link_libraries(discord_bot Qt${QT_VERSION_MAJOR}::Core dpp)
+target_link_libraries(discord_bot Qt${QT_VERSION_MAJOR}::Core dpp winmm)
 target_link_libraries(discord_bot
     FFmpeg::avcodec
     FFmpeg::avformat

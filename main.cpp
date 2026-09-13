@@ -6,6 +6,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <timeapi.h>
 
 // DPP 10.1.6+ verifies TLS certificates through OpenSSL, which has no default
 // CA store on Windows - without one, every connection fails with "Malformed
@@ -65,6 +66,10 @@ static BOOL WINAPI consoleCtrlHandler(DWORD signalType)
 
 int main(int argc, char *argv[])
 {
+    // dpp paces voice packets with short sleeps on its socket thread. At
+    // Windows' default 15.6ms timer granularity they overshoot enough to
+    // stutter or to spin its pacing loop past a 16-bit counter (the crash).
+    timeBeginPeriod(1);
     pointOpenSslAtBundledCertificates();
 
     CtrlMainServer server;
@@ -75,6 +80,7 @@ int main(int argc, char *argv[])
 
     SetConsoleCtrlHandler(consoleCtrlHandler, FALSE);
     activeServer = nullptr;
+    timeEndPeriod(1);
 
     return 0;
 }

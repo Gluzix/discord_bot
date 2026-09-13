@@ -487,11 +487,6 @@ void PlaybackController::playSong(dpp::discord_voice_client *voiceClient, const 
         lastResolvedAtSeconds = 0;
     }
 
-    // dpp 10.1.6 on Windows defaults to "overlap" pacing, whose sleep loop
-    // divides by a uint16_t spin counter that wraps to zero under a timing
-    // hiccup - the divide-by-zero behind the socket-thread crashes.
-    voiceClient->set_send_audio_type(dpp::discord_voice_client::satype_recorded_audio);
-
     isPlaying = true;
 
     decoderThread = std::thread(&PlaybackController::pcmResample, this, *song.event);
