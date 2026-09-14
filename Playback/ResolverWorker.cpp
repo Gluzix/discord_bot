@@ -42,7 +42,7 @@ ResolverWorker::~ResolverWorker()
 void ResolverWorker::run()
 {
     static constexpr size_t LOOKAHEAD = 5;
-    auto nextUnresolved = [this]() -> const Song* { // call with stateMutex held
+    auto nextUnresolved = [this]() -> Song* { // call with stateMutex held
         for (size_t i = 0; i < songQueue.size() && i < LOOKAHEAD; ++i) {
             if (songQueue[i].directUrl.empty() && !songQueue[i].resolveFailed) {
                 return &songQueue[i];
@@ -62,9 +62,10 @@ void ResolverWorker::run()
             if (!running) {
                 break;
             }
-            if (const Song *song = nextUnresolved()) {
+            if (Song *song = nextUnresolved()) {
                 songId = song->id;
                 target = song->target;
+                song->resolveInFlight = true;
             }
         }
         if (songId == 0) {
@@ -84,6 +85,7 @@ void ResolverWorker::run()
                 if (song.id != songId) {
                     continue;
                 }
+                song.resolveInFlight = false;
                 if (media.directUrl.empty()) {
                     // Give up quietly; SongPlayer retries and reports the
                     // error to the user when the song's turn comes.
@@ -103,6 +105,8 @@ void ResolverWorker::run()
                 break;
             }
         }
+        // The worker may be holding off on this very song.
+        stateCv.notify_all();
 
         // Upgrade the "Queued at position N" reply with what we found.
         if (requestEvent) {

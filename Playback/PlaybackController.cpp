@@ -263,8 +263,11 @@ void PlaybackController::playbackWorker()
         dpp::discord_voice_client *voiceClient = nullptr;
         {
             std::unique_lock<std::mutex> lock(stateMutex);
+            // A front song the resolver is still on is left to it - popping
+            // it now would only resolve it a second time.
             stateCv.wait(lock, [this] {
-                return !running || (!songQueue.empty() && currentVoiceClient != nullptr);
+                return !running || (!songQueue.empty() && currentVoiceClient != nullptr
+                                    && !songQueue.front().resolveInFlight);
             });
             if (!running) {
                 break;

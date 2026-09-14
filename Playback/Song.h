@@ -20,6 +20,7 @@ struct Song
     std::string directUrl;
     int64_t resolvedAtSeconds{0};
     bool resolveFailed{false}; // resolver gave up; SongPlayer retries itself
+    bool resolveInFlight{false}; // resolver is on it right now; the worker waits rather than resolving it twice
     bool isLoopReplay{false};  // song-mode repeat: suppress the "Playing:" announcement
     bool fromPlaylist{false};  // shares the /playlist reply: no per-song queue edits
 };
