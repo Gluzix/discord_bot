@@ -13,7 +13,7 @@
 #include <QDebug>
 
 // Resolves the next few queued songs ahead of time: titles show up in /queue
-// and the "Queued at position N" replies, and playSong can start a prefetched
+// and the "Queued at position N" replies, and SongPlayer can start a prefetched
 // song without the multi-second yt-dlp pause between tracks. Only a short
 // lookahead - direct urls expire within hours, so resolving a 100-song
 // playlist up front would be a hundred wasted yt-dlp runs.
@@ -84,7 +84,7 @@ void ResolverWorker::run()
                     continue;
                 }
                 if (media.directUrl.empty()) {
-                    // Give up quietly; playSong retries and reports the
+                    // Give up quietly; SongPlayer retries and reports the
                     // error to the user when the song's turn comes.
                     song.resolveFailed = true;
                 } else {

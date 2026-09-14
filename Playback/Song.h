@@ -19,7 +19,7 @@ struct Song
     std::string webpageUrl;
     std::string directUrl;
     int64_t resolvedAtSeconds{0};
-    bool resolveFailed{false}; // resolver gave up; playSong retries itself
+    bool resolveFailed{false}; // resolver gave up; SongPlayer retries itself
     bool isLoopReplay{false};  // song-mode repeat: suppress the "Playing:" announcement
     bool fromPlaylist{false};  // shares the /playlist reply: no per-song queue edits
 };
