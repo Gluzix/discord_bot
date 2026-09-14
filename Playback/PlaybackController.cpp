@@ -276,6 +276,9 @@ void PlaybackController::playbackWorker()
             songQueue.pop_front();
             voiceClient = currentVoiceClient;
             songInProgress = true;
+            // Armed in the same critical section, so a skip/stop that sees the
+            // song as in progress always reaches it - even before play().
+            songPlayer->arm();
             idleSinceSeconds = 0;
             currentSongLabel = labels::render(song.title, song.webpageUrl, song.target);
         }

@@ -27,13 +27,18 @@ public:
     // "now playing" label once the song resolves, so /queue can show the title.
     explicit SongPlayer(std::function<void(std::string)> onLabelResolved_);
 
+    // Makes the coming play() stoppable from this moment: a stop() landing
+    // between arm() and play() ends the song before it starts. Call it in
+    // the same critical section that publishes the song as in progress.
+    void arm();
+
     // Resolves if needed, announces, decodes and streams one song on the
     // client. Blocks until the song ends or stop() is called. Updates song's
     // resolved fields in place if it had to re-resolve. Returns false on
-    // failure (nothing was played).
+    // failure (nothing was played). arm() first.
     bool play(dpp::discord_voice_client *voiceClient, Song &song);
 
-    // Ends the current song; play() returns once its threads unwind.
+    // Ends the current (or armed) song; play() returns once its threads unwind.
     void stop();
 
     // Discards up to `seconds` of buffered PCM. Returns the whole seconds

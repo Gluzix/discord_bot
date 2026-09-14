@@ -15,6 +15,11 @@ SongPlayer::SongPlayer(std::function<void(std::string)> onLabelResolved_)
 {
 }
 
+void SongPlayer::arm()
+{
+    isPlaying = true;
+}
+
 bool SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
 {
     {
@@ -23,7 +28,6 @@ bool SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
         audioQueue = {};
     }
     currentSongFailed = false;
-    isPlaying = true;
 
     decoderThread = std::thread(&SongPlayer::decode, this, std::ref(song));
     senderThread = std::thread(&SongPlayer::streamAudio, this, voiceClient);
@@ -146,6 +150,11 @@ void SongPlayer::decode(Song &song)
         { std::lock_guard<std::mutex> lock(queueMutex); decodingFinished = true; }
         queueCv.notify_one();
     }};
+
+    // Stopped between arm() and here - don't even launch yt-dlp.
+    if (!isPlaying) {
+        return;
+    }
 
     // A queued song announces itself in a fresh channel message, leaving its
     // "Queued at position N" reply intact as history (also immune to the
