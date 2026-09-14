@@ -26,6 +26,8 @@ bool SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
         std::lock_guard<std::mutex> lock(queueMutex);
         decodingFinished = false;
         audioQueue = {};
+        queuedBytes = 0;
+        bytesToDiscard = 0;
     }
     currentSongFailed = false;
 
@@ -74,28 +76,34 @@ int SongPlayer::forward(int seconds)
         return 0;
     }
 
-    // The decoder runs ahead of playback, so a jump is just discarding PCM
-    // from our own queue. dpp's ~1s send buffer stays untouched on purpose:
-    // flushing it means calling the voice client while the sender thread is
-    // live on it, and dpp's send path has no lock against that.
-    const size_t BYTES_PER_SECOND = 192000; // 48kHz * 2ch * 2 bytes
-    const size_t bytesToDrop = static_cast<size_t>(seconds) * BYTES_PER_SECOND;
-    size_t droppedBytes = 0;
+    // The buffered PCM is dropped right here; whatever it doesn't cover the
+    // decoder skips by decoding and discarding. dpp's ~1s send buffer stays
+    // untouched on purpose: flushing it means calling the voice client while
+    // the sender thread is live on it, and dpp's send path has no lock
+    // against that.
+    const size_t bytesToSkip = static_cast<size_t>(seconds) * BYTES_PER_SECOND;
+    size_t skippedBytes = 0;
     {
         std::lock_guard<std::mutex> lock(queueMutex);
-        while (!audioQueue.empty() && droppedBytes < bytesToDrop) {
-            droppedBytes += audioQueue.front().size();
+        while (!audioQueue.empty() && skippedBytes < bytesToSkip) {
+            skippedBytes += audioQueue.front().size();
+            queuedBytes -= audioQueue.front().size();
             audioQueue.pop();
         }
+        if (skippedBytes < bytesToSkip && !decodingFinished) {
+            bytesToDiscard += bytesToSkip - skippedBytes;
+            skippedBytes = bytesToSkip;
+        }
     }
+    queueCv.notify_all(); // a decoder waiting on a full queue has work again
 
-    if (droppedBytes == 0) {
-        return 0; // decoder hasn't buffered anything to skip yet
+    if (skippedBytes == 0) {
+        return 0; // nothing left beyond dpp's own buffer
     }
 
     // Nearest second, but a real jump never reports as 0 - the reply would
     // claim nothing happened.
-    int skipped = static_cast<int>((droppedBytes + BYTES_PER_SECOND / 2) / BYTES_PER_SECOND);
+    int skipped = static_cast<int>((skippedBytes + BYTES_PER_SECOND / 2) / BYTES_PER_SECOND);
     return std::max(skipped, 1);
 }
 
@@ -123,7 +131,9 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
             }
             packet = std::move(audioQueue.front());
             audioQueue.pop();
+            queuedBytes -= packet.size();
         }
+        queueCv.notify_one(); // room for the decoder
 
         // Never call into dpp while holding queueMutex - a foreign lock
         // inside our critical section is how the whole pipeline wedges.
@@ -238,10 +248,21 @@ void SongPlayer::decode(Song &song)
 
     resampler.run(
         [this](std::vector<uint8_t> pkt) {
-            {
-                std::lock_guard<std::mutex> lock(queueMutex);
-                audioQueue.push(std::move(pkt));
+            std::unique_lock<std::mutex> lock(queueMutex);
+            queueCv.wait(lock, [this] {
+                return queuedBytes < MAX_QUEUED_BYTES || bytesToDiscard > 0 || !isPlaying;
+            });
+            if (!isPlaying) {
+                return;
             }
+            if (bytesToDiscard > 0) {
+                // Whole packets only - a trimmed one would be silence-padded by dpp.
+                bytesToDiscard -= std::min(bytesToDiscard, pkt.size());
+                return;
+            }
+            queuedBytes += pkt.size();
+            audioQueue.push(std::move(pkt));
+            lock.unlock();
             queueCv.notify_one();
         },
         [this] { return isPlaying.load(); });

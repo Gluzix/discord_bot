@@ -41,8 +41,10 @@ public:
     // Ends the current (or armed) song; play() returns once its threads unwind.
     void stop();
 
-    // Discards up to `seconds` of buffered PCM. Returns the whole seconds
-    // dropped (at least 1 for any real drop), 0 when nothing was buffered.
+    // Jumps ahead by `seconds`: what the buffer holds is dropped at once,
+    // the rest the decoder skips by decoding and discarding. Returns the
+    // whole seconds being skipped (at least 1 for any real jump), 0 when
+    // the song has nothing left to skip.
     int forward(int seconds);
 
 private:
@@ -55,7 +57,15 @@ private:
     std::thread senderThread;
     std::thread decoderThread;
 
+    // The decoder runs at most MAX_QUEUED_SECONDS ahead of playback - a cap
+    // on memory (a whole album as PCM is hundreds of MB), not a pacing device.
+    static constexpr size_t BYTES_PER_SECOND = 192000; // 48kHz * 2ch * 2 bytes
+    static constexpr size_t MAX_QUEUED_SECONDS = 60;
+    static constexpr size_t MAX_QUEUED_BYTES = MAX_QUEUED_SECONDS * BYTES_PER_SECOND;
+
     std::queue<std::vector<uint8_t>> audioQueue;
+    size_t queuedBytes = 0;    // what audioQueue holds
+    size_t bytesToDiscard = 0; // forward() beyond the buffer: the decoder skips this much
     std::mutex queueMutex;
     std::condition_variable queueCv;
     bool decodingFinished = false;

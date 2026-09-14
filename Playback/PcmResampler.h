@@ -2,11 +2,13 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 struct AVFormatContext;
 struct AVCodecContext;
+struct AVIOContext;
 struct SwrContext;
 
 // Decodes one media url into 48kHz s16 stereo PCM, handed out as packets of
@@ -32,6 +34,10 @@ public:
     void run(const PacketSink &sink, const std::function<bool()> &keepGoing);
 
 private:
+    struct ChunkedSource; // fetches the url in bounded ranges - see the .cpp
+
+    std::unique_ptr<ChunkedSource> source;
+    AVIOContext *avio{nullptr};
     AVFormatContext *format{nullptr};
     AVCodecContext *codecContext{nullptr};
     SwrContext *swr{nullptr};
