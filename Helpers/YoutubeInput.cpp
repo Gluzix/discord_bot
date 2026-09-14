@@ -1,14 +1,8 @@
-#pragma once
+#include "YoutubeInput.h"
 
 #include <cctype>
-#include <string>
 
-// User input ends up on a yt-dlp command line. These checks keep it to plain
-// YouTube links and tame search text, so nothing can break out of the quoted
-// argument or inject extra arguments.
-namespace youtube {
-
-inline bool isAllowedUrl(const std::string &url)
+bool youtube::isAllowedUrl(const std::string &url)
 {
     static const char* allowedPrefixes[] = {
         "https://www.youtube.com/",
@@ -42,8 +36,7 @@ inline bool isAllowedUrl(const std::string &url)
     return true;
 }
 
-// Free text stays short and free of quotes/control characters.
-inline bool isReasonableSearchQuery(const std::string &query)
+bool youtube::isReasonableSearchQuery(const std::string &query)
 {
     if (query.empty() || query.size() > 150) {
         return false;
@@ -57,16 +50,12 @@ inline bool isReasonableSearchQuery(const std::string &query)
     return true;
 }
 
-// Any allowed link that names a playlist - a watch?v=...&list=... link too.
-inline bool isPlaylistUrl(const std::string &url)
+bool youtube::isPlaylistUrl(const std::string &url)
 {
     return isAllowedUrl(url) && url.find("list=") != std::string::npos;
 }
 
-// A playlist page with no video of its own; /play has nothing to play there.
-inline bool isPlaylistPageUrl(const std::string &url)
+bool youtube::isPlaylistPageUrl(const std::string &url)
 {
     return isPlaylistUrl(url) && url.find("/playlist?") != std::string::npos;
-}
-
 }

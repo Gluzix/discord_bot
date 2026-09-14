@@ -1,11 +1,12 @@
 #pragma once
 
+#include "Song.h"
+
 #include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <string>
 #include <thread>
 #include <vector>
@@ -16,12 +17,15 @@ struct voice_ready_t;
 struct slashcommand_t;
 }
 
+class ResolverWorker;
+class SongPlayer;
+
 struct PlaylistEntry; // WindowsProcessRunner.h
 
-// Owns the whole playback pipeline: the song queue, yt-dlp resolution,
-// FFmpeg decode/resample, and the paced hand-off to DPP. A persistent
-// worker thread plays queued songs one after another; commands stay thin
-// and only talk to this interface.
+// Owns the song queue, the loop policy and the voice session. A persistent
+// worker thread hands queued songs to SongPlayer one after another, while
+// ResolverWorker prefetches the next few. Commands stay thin and only talk
+// to this interface.
 class PlaybackController
 {
 public:
@@ -105,22 +109,7 @@ public:
     QueueSnapshot queueSnapshot();
 
 private:
-    struct Song
-    {
-        uint64_t id{0};
-        std::string target; // youtube url or "ytsearch1:<query>"
-        bool wasQueued{false}; // waited in the queue vs started right away
-        std::unique_ptr<dpp::slashcommand_t> event;
 
-        // Filled by the resolver thread ahead of time; empty until then.
-        std::string title;
-        std::string webpageUrl;
-        std::string directUrl;
-        int64_t resolvedAtSeconds{0};
-        bool resolveFailed{false}; // resolver gave up; playSong retries itself
-        bool isLoopReplay{false};  // song-mode repeat: suppress the "Playing:" announcement
-        bool fromPlaylist{false};  // shares the /playlist reply: no per-song queue edits
-    };
 
     // Bookkeeping shared by every enqueue. Call with stateMutex held.
     void noteRequest(const dpp::slashcommand_t &event);
@@ -130,12 +119,7 @@ private:
     dpp::discord_voice_client* clientIfSongInProgress();
 
     void playbackWorker();
-    void resolverWorker();
-    void playSong(dpp::discord_voice_client *voiceClient, const Song &song);
     Song makeReplay(const Song &song, bool loopReplay); // call with stateMutex held (uses nextSongId)
-    void streamAudio(dpp::discord_voice_client *voiceClient);
-    void pcmResample(dpp::slashcommand_t event);
-    void stopSendingData();
 
     // Queue + worker state, guarded by stateMutex.
     std::mutex stateMutex;
@@ -146,7 +130,7 @@ private:
     uint64_t activeGuildId{0};      // last known guild, survives stop/leave
     int64_t idleSinceSeconds{0};    // set when playback goes quiet
     uint64_t lastTextChannelId{0};  // farewell messages go here
-    // The worker is inside playSong for some song. Stays true while paused -
+    // The worker is inside SongPlayer::play. Stays true while paused -
     // it tracks the song's lifecycle, not whether audio is audible.
     bool songInProgress{false};
     LoopMode loopMode{LoopMode::Off};
@@ -155,36 +139,7 @@ private:
     uint64_t nextSongId{1};
     std::atomic<bool> running{true};
     std::thread workerThread;
-    std::thread resolverThread;
 
-    // Per-song pipeline state.
-    std::atomic<bool> isPlaying{false};
-    std::thread senderThread;
-    std::thread decoderThread;
-    std::string requestedUrl;
-
-    // Hand-off from playSong to pcmResample when the resolver already did
-    // the work; empty means pcmResample resolves on its own.
-    std::string prefetchedTitle;
-    std::string prefetchedWebpageUrl;
-    std::string prefetchedDirectUrl;
-
-    // A queued song keeps its "Queued at position N" message intact and
-    // announces itself in a fresh message; an immediate song still morphs
-    // its "Looking for your song..." placeholder.
-    bool currentSongWasQueued{false};
-    bool currentSongIsLoopReplay{false}; // suppresses the repeat announcements
-    bool currentSongFailed{false};       // failed songs never requeue (no error loops)
-
-    // Fresh resolution done by pcmResample for the current song, adopted by
-    // loop replays - keeps an infinite loop gapless after the original URL
-    // expires. Guarded by stateMutex.
-    std::string lastResolvedTitle;
-    std::string lastResolvedWebpageUrl;
-    std::string lastResolvedDirectUrl;
-    int64_t lastResolvedAtSeconds{0};
-    std::queue<std::vector<uint8_t>> audioQueue;
-    std::mutex queueMutex;
-    std::condition_variable queueCv;
-    bool decodingFinished = false;
+    std::unique_ptr<SongPlayer> songPlayer;
+    std::unique_ptr<ResolverWorker> resolverWorker;
 };
