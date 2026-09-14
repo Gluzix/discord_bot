@@ -31,9 +31,10 @@ public:
     // then killed within a poll interval. Empty means never.
     using CancelCheck = std::function<bool()>;
 
-    // Runs yt-dlp once to resolve both the video title and the direct media
-    // URL. The target is either a YouTube url or a "ytsearch1:<query>"
-    // search expression. directUrl is empty on failure or cancellation.
+    // Resolves the video title, page url and direct media URL. The target is
+    // either a YouTube url or a "ytsearch1:<query>" search expression; a
+    // search resolves to its first plain-video result. directUrl is empty
+    // on failure or cancellation.
     static ResolvedMedia resolveMedia(const std::string &target, const CancelCheck &cancelled = {});
 
     // Lists the first maxEntries videos of a YouTube playlist without
@@ -52,6 +53,10 @@ private:
     // yt-dlp together with everything it spawned.
     static YtDlpOutput runYtDlp(const std::string &args, const CancelCheck &cancelled);
 
+    // Lists the top few search results flat (no extraction, ~2s) and returns
+    // the first plain video's url; empty when there is none.
+    static std::string firstVideoUrl(const std::string &query, const CancelCheck &cancelled);
+
     static const int PIPE_READ_CHUNK = 4096;
     static const int PIPE_BUFFER_BYTES = 64 * 1024;
     static const int POLL_INTERVAL_MS = 50;
@@ -59,5 +64,7 @@ private:
     static const std::string YT_DLP;
     static const std::string YT_DLP_PATH;
     static const std::string YT_DLP_SONG_ARGS;
+    static const std::string YT_DLP_SEARCH_ARGS;
+    static const std::string SEARCH_PREFIX;
 };
 

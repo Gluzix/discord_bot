@@ -15,6 +15,8 @@
 const std::string WindowsProcessRunner::YT_DLP = "yt-dlp";
 const std::string WindowsProcessRunner::YT_DLP_PATH = "C:/Users/kamil/Downloads/ytdlp/yt-dlp.exe";
 const std::string WindowsProcessRunner::YT_DLP_SONG_ARGS = "--no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print webpage_url --print urls";
+const std::string WindowsProcessRunner::YT_DLP_SEARCH_ARGS = "--flat-playlist --no-warnings --socket-timeout 10 --encoding utf-8 --print \"%(ie_key)s %(url)s\"";
+const std::string WindowsProcessRunner::SEARCH_PREFIX = "ytsearch1:";
 
 static bool isValidUtf8(const std::string &text)
 {
@@ -192,13 +194,43 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     return result;
 }
 
+// A band-name search often ranks the artist's channel first, and handing
+// that to "ytsearch1:" makes yt-dlp extract every upload on it (minutes,
+// with the title of the first and the url of the last). So pick the video
+// ourselves from a flat listing of the top results.
+std::string WindowsProcessRunner::firstVideoUrl(const std::string &query, const CancelCheck &cancelled)
+{
+    YtDlpOutput run = runYtDlp(YT_DLP_SEARCH_ARGS + " \"ytsearch5:" + query + "\"", cancelled);
+
+    // One "<extractor> <url>" line per result: plain videos come from
+    // "Youtube", channels and playlists from "YoutubeTab".
+    const std::string videoMarker = "Youtube ";
+    for (const std::string &line : run.lines) {
+        if (line.rfind(videoMarker, 0) == 0) {
+            return line.substr(videoMarker.size());
+        }
+    }
+    if (!run.cancelled) {
+        qDebug() << "yt-dlp search found no video, exit code:" << run.exitCode;
+    }
+    return {};
+}
+
 ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &target, const CancelCheck &cancelled)
 {
+    std::string url = target;
+    if (target.rfind(SEARCH_PREFIX, 0) == 0) {
+        url = firstVideoUrl(target.substr(SEARCH_PREFIX.size()), cancelled);
+        if (url.empty()) {
+            return {};
+        }
+    }
+
     // The --print fields make yt-dlp emit the title, the page url and the
     // direct media URL on consecutive lines, in one process. Without
     // --encoding utf-8, yt-dlp writes pipe output in the ANSI code page
     // (cp1250 here), which turns Polish titles into mojibake on Discord.
-    YtDlpOutput run = runYtDlp(YT_DLP_SONG_ARGS + " \"" + target + "\"", cancelled);
+    YtDlpOutput run = runYtDlp(YT_DLP_SONG_ARGS + " \"" + url + "\"", cancelled);
     const std::vector<std::string> &lines = run.lines;
 
     if (run.cancelled) {
