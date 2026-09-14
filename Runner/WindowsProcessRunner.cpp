@@ -8,6 +8,7 @@
 #include <windows.h>
 
 #include <QDebug>
+#include <chrono>
 #include <cstdlib>
 #include <vector>
 
@@ -77,7 +78,7 @@ static std::string ensureUtf8(const std::string &text)
     return text;
 }
 
-WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::string &args)
+WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::string &args, const CancelCheck &cancelled)
 {
     YtDlpOutput result;
 
@@ -87,11 +88,18 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
 
     HANDLE readPipe = nullptr;
     HANDLE writePipe = nullptr;
-    if (!CreatePipe(&readPipe, &writePipe, &secAttr, 0)) {
+    if (!CreatePipe(&readPipe, &writePipe, &secAttr, PIPE_BUFFER_BYTES)) {
         qDebug() << "Failed to create yt-dlp pipes";
         return result;
     }
     SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
+
+    // A kill must also reach what yt-dlp spawns (the PyInstaller child
+    // interpreter, a JS runtime) - a job object takes down the whole tree.
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
 
     STARTUPINFOW startupInfo{};
     startupInfo.cb = sizeof(STARTUPINFOW);
@@ -101,39 +109,70 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
 
     // The command line goes through CreateProcessW as UTF-16 - the A variant
     // would mangle non-ASCII search queries through the ANSI code page.
+    // Suspended until it is inside the job, so nothing can be spawned outside it.
+    const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_SUSPENDED;
     PROCESS_INFORMATION processInfo{};
     std::wstring commandToRun = utf8ToWide(YT_DLP + " " + args);
-    if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo)) {
+    if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, creationFlags, nullptr, nullptr, &startupInfo, &processInfo)) {
         // yt-dlp not on PATH - retry with the known local install.
         commandToRun = utf8ToWide("\"" + YT_DLP_PATH + "\" " + args);
-        if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startupInfo, &processInfo)) {
+        if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, creationFlags, nullptr, nullptr, &startupInfo, &processInfo)) {
             qDebug() << "Failed to create yt-dlp process";
+            CloseHandle(job);
             CloseHandle(readPipe);
             CloseHandle(writePipe);
             return result;
         }
     }
+    if (!AssignProcessToJobObject(job, processInfo.hProcess)) {
+        qDebug() << "yt-dlp runs outside a job object - a kill won't reach its children";
+    }
+    ResumeThread(processInfo.hThread);
+    CloseHandle(processInfo.hThread);
 
-    // Parent must close its copy of the write end or ReadFile never sees EOF.
+    // Parent must close its copy of the write end or the pipe never drains.
     CloseHandle(writePipe);
-
 
     std::string output;
     char buffer[PIPE_READ_CHUNK];
-    DWORD bytesRead = 0;
+    auto drainPipe = [&] {
+        DWORD available = 0;
+        DWORD bytesRead = 0;
+        while (PeekNamedPipe(readPipe, nullptr, 0, nullptr, &available, nullptr) && available > 0
+               && ReadFile(readPipe, buffer, sizeof(buffer), &bytesRead, nullptr) && bytesRead > 0) {
+            output.append(buffer, bytesRead);
+        }
+    };
 
-    while (ReadFile(readPipe, buffer, sizeof(buffer), &bytesRead, nullptr) && bytesRead > 0) {
-        output.append(buffer, bytesRead);
+    // Polled, not blocked: a skip (cancelled) or a runaway extraction
+    // (deadline) has to be able to end the run at any moment.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(YT_DLP_TIMEOUT_SECONDS);
+    bool killed = false;
+    for (;;) {
+        drainPipe();
+        if (WaitForSingleObject(processInfo.hProcess, POLL_INTERVAL_MS) == WAIT_OBJECT_0) {
+            drainPipe();
+            break;
+        }
+        result.cancelled = cancelled && cancelled();
+        if (result.cancelled || std::chrono::steady_clock::now() >= deadline) {
+            if (!result.cancelled) {
+                qDebug() << "yt-dlp killed after" << YT_DLP_TIMEOUT_SECONDS << "s:" << QString::fromStdString(args).right(60);
+            }
+            TerminateJobObject(job, 1);
+            killed = true;
+            break;
+        }
     }
-
     CloseHandle(readPipe);
 
-    WaitForSingleObject(processInfo.hProcess, 30000);
     DWORD exitCode = 1;
-    GetExitCodeProcess(processInfo.hProcess, &exitCode);
+    if (!killed) {
+        GetExitCodeProcess(processInfo.hProcess, &exitCode);
+    }
     result.exitCode = exitCode;
     CloseHandle(processInfo.hProcess);
-    CloseHandle(processInfo.hThread);
+    CloseHandle(job);
 
     size_t start = 0;
     while (start < output.size()) {
@@ -153,15 +192,18 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     return result;
 }
 
-ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &target)
+ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &target, const CancelCheck &cancelled)
 {
     // The --print fields make yt-dlp emit the title, the page url and the
     // direct media URL on consecutive lines, in one process. Without
     // --encoding utf-8, yt-dlp writes pipe output in the ANSI code page
     // (cp1250 here), which turns Polish titles into mojibake on Discord.
-    YtDlpOutput run = runYtDlp(YT_DLP_SONG_ARGS + " \"" + target + "\"");
+    YtDlpOutput run = runYtDlp(YT_DLP_SONG_ARGS + " \"" + target + "\"", cancelled);
     const std::vector<std::string> &lines = run.lines;
 
+    if (run.cancelled) {
+        return {};
+    }
     if (run.exitCode != 0 || lines.empty() || lines.back().rfind("http", 0) != 0) {
         qDebug() << "yt-dlp did not return a usable URL, exit code:" << run.exitCode;
         return {};
@@ -190,7 +232,7 @@ PlaylistListing WindowsProcessRunner::listPlaylist(const std::string &playlistUr
         " --print \"playlist:PLAYLIST_TITLE=%(title)s\""
         " --print \"playlist:PLAYLIST_COUNT=%(playlist_count)s\""
         " \"" + playlistUrl + "\"";
-    YtDlpOutput run = runYtDlp(args);
+    YtDlpOutput run = runYtDlp(args, {});
     if (run.exitCode != 0) {
         qDebug() << "yt-dlp playlist listing exit code:" << run.exitCode;
     }

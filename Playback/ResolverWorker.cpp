@@ -71,7 +71,8 @@ void ResolverWorker::run()
             continue;
         }
 
-        ResolvedMedia media = WindowsProcessRunner::resolveMedia(target);
+        // Shutdown kills a running yt-dlp instead of waiting it out.
+        ResolvedMedia media = WindowsProcessRunner::resolveMedia(target, [this] { return !running.load(); });
 
         std::unique_ptr<dpp::slashcommand_t> requestEvent;
         std::string label;

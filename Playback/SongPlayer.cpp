@@ -178,7 +178,9 @@ void SongPlayer::decode(Song &song)
         media.webpageUrl = song.webpageUrl;
         media.directUrl = song.directUrl;
     } else {
-        media = WindowsProcessRunner::resolveMedia(song.target);
+        // A skip/stop while yt-dlp runs kills it - nobody waits on a resolve
+        // nobody wants anymore.
+        media = WindowsProcessRunner::resolveMedia(song.target, [this] { return !isPlaying.load(); });
         if (!media.directUrl.empty()) {
             // Re-resolved (expired prefetch): write it back so a loop replay
             // starts from the fresh url with no extra bookkeeping.
@@ -189,14 +191,13 @@ void SongPlayer::decode(Song &song)
         }
     }
 
-    if (media.directUrl.empty()) {
-        fail(messages::errorResolve);
+    // A cancelled resolve comes back empty too - check the skip first so it
+    // isn't reported as an error.
+    if (!isPlaying) {
         return;
     }
-
-    // A skip/stop can land while yt-dlp runs - don't open a stream or
-    // announce a song nobody wants anymore.
-    if (!isPlaying) {
+    if (media.directUrl.empty()) {
+        fail(messages::errorResolve);
         return;
     }
 
