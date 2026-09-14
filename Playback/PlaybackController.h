@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Song.h"
+
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -15,6 +17,8 @@ class discord_voice_client;
 struct voice_ready_t;
 struct slashcommand_t;
 }
+
+class ResolverWorker;
 
 struct PlaylistEntry; // WindowsProcessRunner.h
 
@@ -105,22 +109,7 @@ public:
     QueueSnapshot queueSnapshot();
 
 private:
-    struct Song
-    {
-        uint64_t id{0};
-        std::string target; // youtube url or "ytsearch1:<query>"
-        bool wasQueued{false}; // waited in the queue vs started right away
-        std::unique_ptr<dpp::slashcommand_t> event;
 
-        // Filled by the resolver thread ahead of time; empty until then.
-        std::string title;
-        std::string webpageUrl;
-        std::string directUrl;
-        int64_t resolvedAtSeconds{0};
-        bool resolveFailed{false}; // resolver gave up; playSong retries itself
-        bool isLoopReplay{false};  // song-mode repeat: suppress the "Playing:" announcement
-        bool fromPlaylist{false};  // shares the /playlist reply: no per-song queue edits
-    };
 
     // Bookkeeping shared by every enqueue. Call with stateMutex held.
     void noteRequest(const dpp::slashcommand_t &event);
@@ -130,7 +119,6 @@ private:
     dpp::discord_voice_client* clientIfSongInProgress();
 
     void playbackWorker();
-    void resolverWorker();
     void playSong(dpp::discord_voice_client *voiceClient, const Song &song);
     Song makeReplay(const Song &song, bool loopReplay); // call with stateMutex held (uses nextSongId)
     void streamAudio(dpp::discord_voice_client *voiceClient);
@@ -155,7 +143,6 @@ private:
     uint64_t nextSongId{1};
     std::atomic<bool> running{true};
     std::thread workerThread;
-    std::thread resolverThread;
 
     // Per-song pipeline state.
     std::atomic<bool> isPlaying{false};
@@ -187,4 +174,6 @@ private:
     std::mutex queueMutex;
     std::condition_variable queueCv;
     bool decodingFinished = false;
+
+    std::unique_ptr<ResolverWorker> resolverWorker;
 };

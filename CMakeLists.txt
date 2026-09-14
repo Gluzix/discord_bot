@@ -56,6 +56,8 @@ add_executable(discord_bot
   Playback/PcmResampler.h Playback/PcmResampler.cpp
   Helpers/Labels.h Helpers/Labels.cpp
   Helpers/YoutubeInput.h Helpers/YoutubeInput.cpp
+  Playback/ResolverWorker.h Playback/ResolverWorker.cpp
+  Playback/Song.h
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
