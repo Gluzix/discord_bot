@@ -44,22 +44,25 @@ add_executable(discord_bot
   Commands/QueueCommand.h Commands/QueueCommand.cpp
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
-  WindowsProcessRunner.h WindowsProcessRunner.cpp
-  PlaybackController.h PlaybackController.cpp
+  Runner/WindowsProcessRunner.h Runner/WindowsProcessRunner.cpp
+  Playback/PlaybackController.h Playback/PlaybackController.cpp
   VoiceConnector.h VoiceConnector.cpp
   Messages.h
-  YoutubeInput.h
   Commands/PauseCommand.h Commands/PauseCommand.cpp
   Commands/ResumeCommand.h Commands/ResumeCommand.cpp
   Commands/LoopCommand.h Commands/LoopCommand.cpp
   Commands/ForwardCommand.h Commands/ForwardCommand.cpp
   Commands/PlaylistCommand.h Commands/PlaylistCommand.cpp
-  PcmResampler.h PcmResampler.cpp
-  Labels.h Labels.cpp
+  Playback/PcmResampler.h Playback/PcmResampler.cpp
+  Helpers/Labels.h Helpers/Labels.cpp
+  Helpers/YoutubeInput.h Helpers/YoutubeInput.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
+target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Helpers")
+target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Playback")
+target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Runner")
 target_include_directories(discord_bot PRIVATE
     ${FFMPEG_INCLUDE_DIRS}
     "C:/vcpkg/installed/x64-windows/include"
