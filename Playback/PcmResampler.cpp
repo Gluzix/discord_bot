@@ -261,17 +261,22 @@ void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keep
         staging.resize(writePos + (converted > 0 ? (size_t)converted * BYTES_PER_SAMPLE_PAIR : 0));
     };
 
+    auto readTime = std::chrono::steady_clock::duration::zero();
+    auto decodeTime = std::chrono::steady_clock::duration::zero();
+    // The sink blocks whenever the bounded PCM queue is full, which is most
+    // of a song - counting that as decode time makes decoding look endless.
+    auto sinkTime = std::chrono::steady_clock::duration::zero();
+
     auto pushFullPackets = [&]() {
         size_t readPos = 0;
         while (staging.size() - readPos >= packetBytes) {
+            auto sinkStart = std::chrono::steady_clock::now();
             sink(std::vector<uint8_t>(staging.begin() + readPos, staging.begin() + readPos + packetBytes));
+            sinkTime += (std::chrono::steady_clock::now() - sinkStart);
             readPos += packetBytes;
         }
         staging.erase(staging.begin(), staging.begin() + readPos);
     };
-
-    auto readTime = std::chrono::steady_clock::duration::zero();
-    auto decodeTime = std::chrono::steady_clock::duration::zero();
 
     while (keepGoing()) {
         auto t0 = std::chrono::steady_clock::now();
@@ -303,16 +308,24 @@ void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keep
         av_packet_unref(packet);
     }
 
-    qDebug() << "Total read (network) time: " << std::chrono::duration_cast<std::chrono::milliseconds>(readTime).count() << "ms";
-    qDebug() << "Total decode/resample time: " << std::chrono::duration_cast<std::chrono::milliseconds>(decodeTime).count() << "ms";
-
     // Drain the resampler; only this last packet may be shorter than
     // packetBytes - DPP silence-pads it, inaudible at end of stream.
+    auto drainStart = std::chrono::steady_clock::now();
     convertIntoStaging(nullptr, 0);
     pushFullPackets();
     if (!staging.empty()) {
+        auto sinkStart = std::chrono::steady_clock::now();
         sink(std::move(staging));
+        sinkTime += (std::chrono::steady_clock::now() - sinkStart);
     }
+    decodeTime += (std::chrono::steady_clock::now() - drainStart);
+
+    auto asMs = [](std::chrono::steady_clock::duration d) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
+    };
+    qDebug() << "Total read (network) time: " << asMs(readTime) << "ms";
+    qDebug() << "Total decode/resample time: " << asMs(decodeTime - sinkTime) << "ms";
+    qDebug() << "Total wait on the PCM queue: " << asMs(sinkTime) << "ms";
 
     av_packet_free(&packet);
     av_frame_free(&frame);
