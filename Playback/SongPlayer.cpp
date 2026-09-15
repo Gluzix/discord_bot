@@ -173,13 +173,13 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
             });
         }
         if (voiceLost) {
-            isPlaying = false; // the decoder ends with it
+            stop(); // a decoder waiting on a full queue has nobody else to wake it
         }
         if (!isPlaying) break;
 
         if (voiceClient->terminating) {
             voiceLost = true;
-            isPlaying = false;
+            stop();
             break;
         }
         voiceClient->send_audio_raw((uint16_t*)packet.data(), packet.size());
