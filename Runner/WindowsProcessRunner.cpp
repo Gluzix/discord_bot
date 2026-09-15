@@ -283,7 +283,8 @@ PlaylistListing WindowsProcessRunner::listPlaylist(const std::string &playlistUr
             pendingUrl = line;
         } else {
             // YouTube keeps placeholder entries for videos nobody can play.
-            if (line != "[Private video]" && line != "[Deleted video]") {
+            // A private one now shows up with no title at all ("NA").
+            if (line != "[Private video]" && line != "[Deleted video]" && line != "NA") {
                 listing.entries.push_back({pendingUrl, ensureUtf8(line)});
             }
             pendingUrl.clear();
