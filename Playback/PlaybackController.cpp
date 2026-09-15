@@ -195,6 +195,12 @@ void PlaybackController::setLoopMode(LoopMode mode)
     loopMode = mode;
 }
 
+void PlaybackController::setVoiceLostHandler(std::function<void(uint64_t, uint64_t)> handler)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    voiceLostHandler = std::move(handler);
+}
+
 void PlaybackController::onVoiceReady(const dpp::voice_ready_t &event)
 {
     {
@@ -291,12 +297,28 @@ void PlaybackController::playbackWorker()
                                               : SongPlayer::Outcome::Failed;
         bool ok = outcome == SongPlayer::Outcome::Finished;
 
+        std::function<void(uint64_t, uint64_t)> reportVoiceLost;
+        uint64_t lostGuildId = 0;
+        uint64_t lostChannelId = 0;
         {
             std::lock_guard<std::mutex> lock(stateMutex);
 
             bool endedNaturally = !skipRequested && ok;
             bool sessionAlive = running && currentVoiceClient != nullptr;
-            if (sessionAlive && loopMode == LoopMode::Song && endedNaturally) {
+            if (outcome == SongPlayer::Outcome::VoiceLost) {
+                if (sessionAlive) {
+                    // Back to the front, announced again when it resumes.
+                    songQueue.push_front(makeReplay(song, false));
+                }
+                // dpp's own full reconnection may have handed us a new client
+                // meanwhile - that one works, don't throw it away.
+                if (sessionAlive && currentVoiceClient == voiceClient) {
+                    currentVoiceClient = nullptr;
+                    reportVoiceLost = voiceLostHandler;
+                    lostGuildId = activeGuildId;
+                    lostChannelId = activeChannelId;
+                }
+            } else if (sessionAlive && loopMode == LoopMode::Song && endedNaturally) {
                 // Repeat-one: back to the front, quietly.
                 songQueue.push_front(makeReplay(song, true));
             } else if (sessionAlive && loopMode == LoopMode::Queue && ok) {
@@ -313,6 +335,10 @@ void PlaybackController::playbackWorker()
         }
         // stop() may be waiting for the song threads to be fully joined.
         stateCv.notify_all();
+
+        if (reportVoiceLost) {
+            reportVoiceLost(lostGuildId, lostChannelId);
+        }
     }
 }
 

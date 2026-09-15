@@ -13,6 +13,7 @@
 #include "LoopCommand.h"
 #include "ForwardCommand.h"
 #include "PlaylistCommand.h"
+#include "VoiceRejoiner.h"
 #include <QDebug>
 
 CommandHandler::CommandHandler()
@@ -42,16 +43,30 @@ void CommandHandler::prepare()
     add<PlaylistCommand>(playback);
 
     if (bot) {
+        rejoiner = std::make_shared<VoiceRejoiner>(*bot);
+
+        // A voice session dpp can't recover is replaced by a fresh one.
+        playback->setVoiceLostHandler([rejoiner = rejoiner](uint64_t guildId, uint64_t channelId) {
+            rejoiner->rejoin(guildId, channelId);
+        });
+
         // Starts a /play that was waiting for the voice handshake to finish.
-        bot->on_voice_ready([playback = playback](const dpp::voice_ready_t& event) {
+        bot->on_voice_ready([playback = playback, rejoiner = rejoiner](const dpp::voice_ready_t& event) {
             playback->onVoiceReady(event);
+            if (event.voice_client) {
+                rejoiner->onVoiceReady(static_cast<uint64_t>(event.voice_client->server_id));
+            }
         });
 
         // Any change of the bot's own voice channel (kicked, dragged, or
         // disconnected) can destroy the old voice client - stop playback so
         // no thread keeps sending into a dead client.
-        bot->on_voice_state_update([playback = playback, bot = bot](const dpp::voice_state_update_t& event) {
+        bot->on_voice_state_update([playback = playback, bot = bot, rejoiner = rejoiner](const dpp::voice_state_update_t& event) {
             if (event.state.user_id == bot->me.id) {
+                // Our own leave during a rejoin is not a kick - don't wipe the queue.
+                if (event.state.channel_id == 0 && rejoiner->isPending(event.state.guild_id)) {
+                    return;
+                }
                 playback->onBotVoiceStateChanged(event.state.channel_id);
             }
         });
@@ -60,7 +75,9 @@ void CommandHandler::prepare()
         // too long - the bot shouldn't squat in a channel it isn't serving.
         // dpp's own connection registry is the source of truth for "in voice".
         constexpr int64_t IDLE_TIMEOUT_SECONDS = 5 * 60;
-        bot->start_timer([bot = bot, playback = playback](dpp::timer) {
+        bot->start_timer([bot = bot, playback = playback, rejoiner = rejoiner](dpp::timer) {
+            rejoiner->tick();
+
             PlaybackController::IdleInfo info = playback->idleInfo();
             if (info.guildId == 0 || !info.idle || info.idleSinceSeconds == 0) {
                 return;
