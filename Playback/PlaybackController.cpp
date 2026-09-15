@@ -287,7 +287,9 @@ void PlaybackController::playbackWorker()
         // new song then, but still run the cleanup below so songInProgress
         // clears. play() updates song's resolved fields in place if it
         // re-resolved, so a loop replay picks up the fresh url for free.
-        bool ok = running && songPlayer->play(voiceClient, song);
+        SongPlayer::Outcome outcome = running ? songPlayer->play(voiceClient, song)
+                                              : SongPlayer::Outcome::Failed;
+        bool ok = outcome == SongPlayer::Outcome::Finished;
 
         {
             std::lock_guard<std::mutex> lock(stateMutex);
