@@ -8,6 +8,7 @@
 #include "Messages.h"
 #include "Song.h"
 #include "Labels.h"
+#include "Log.h"
 
 #include <dpp/dpp.h>
 #include <QDebug>
@@ -41,6 +42,8 @@ ResolverWorker::~ResolverWorker()
 
 void ResolverWorker::run()
 {
+    logging::nameThisThread("resolver");
+
     static constexpr size_t LOOKAHEAD = 5;
     auto nextUnresolved = [this]() -> Song* { // call with stateMutex held
         for (size_t i = 0; i < songQueue.size() && i < LOOKAHEAD; ++i) {

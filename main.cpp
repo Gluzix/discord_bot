@@ -1,4 +1,5 @@
 #include "CtrlMainServer.h"
+#include "Log.h"
 
 #include <cstdlib>
 
@@ -66,6 +67,9 @@ static BOOL WINAPI consoleCtrlHandler(DWORD signalType)
 
 int main(int argc, char *argv[])
 {
+    logging::nameThisThread("main");
+    logging::install();
+
     // dpp paces voice packets with short sleeps on its socket thread. At
     // Windows' default 15.6ms timer granularity they overshoot enough to
     // stutter or to spin its pacing loop past a 16-bit counter (the crash).

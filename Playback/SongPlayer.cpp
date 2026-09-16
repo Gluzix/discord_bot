@@ -4,6 +4,7 @@
 #include "WindowsProcessRunner.h"
 #include "Messages.h"
 #include "Labels.h"
+#include "Log.h"
 
 #include <dpp/dpp.h>
 
@@ -118,6 +119,8 @@ int SongPlayer::forward(int seconds)
 
 void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
 {
+    logging::nameThisThread("sender");
+
     // Everything handed to DPP is opus-encoded and (with DAVE E2EE, the
     // default) encrypted with the *current* group key immediately. The key
     // rotates whenever someone joins or leaves, turning any large queued
@@ -191,6 +194,8 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
 
 void SongPlayer::decode(Song &song)
 {
+    logging::nameThisThread("decoder");
+
     // Whatever happens here, the sender waits on the queue and must be
     // released - every exit path has to mark decoding as finished.
     struct FinishGuard { std::function<void()> done; ~FinishGuard() { if (done) done(); } };

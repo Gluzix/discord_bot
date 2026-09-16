@@ -2,3 +2,5 @@
 CMakeLists.txt.user
 # Bot token - never commit it
 token.json
+# Log files
+logs/
