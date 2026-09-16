@@ -25,6 +25,9 @@ private:
         commands.emplace(cmd->name(), std::move(cmd));
     }
 
+    void setupCommands();
+    void setupBot();
+
     std::shared_ptr<dpp::cluster> bot;
     std::shared_ptr<PlaybackController> playback;
     std::shared_ptr<VoiceRejoiner> rejoiner;
