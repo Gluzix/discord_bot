@@ -56,6 +56,7 @@ add_executable(discord_bot
   Commands/PlaylistCommand.h Commands/PlaylistCommand.cpp
   Playback/PcmResampler.h Playback/PcmResampler.cpp
   Helpers/Labels.h Helpers/Labels.cpp
+  Helpers/Log.h Helpers/Log.cpp
   Helpers/YoutubeInput.h Helpers/YoutubeInput.cpp
   Playback/ResolverWorker.h Playback/ResolverWorker.cpp
   Playback/SongPlayer.h Playback/SongPlayer.cpp

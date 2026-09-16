@@ -1,5 +1,6 @@
 #include "CtrlMainServer.h"
 #include "TokenReader.h"
+#include "Log.h"
 
 #include <dpp/dpp.h>
 
@@ -8,7 +9,7 @@ CtrlMainServer::CtrlMainServer()
     TokenReader reader("token.json");
     std::string token = reader.getToken();
     bot = std::make_shared<dpp::cluster>(token, dpp::i_default_intents);
-    bot->on_log(dpp::utility::cout_logger());
+    bot->on_log(logging::dppLog);
 
     cmdHandler.setBot(bot);
     cmdHandler.prepare();
