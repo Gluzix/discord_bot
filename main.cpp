@@ -68,6 +68,7 @@ static BOOL WINAPI consoleCtrlHandler(DWORD signalType)
 int main(int argc, char *argv[])
 {
     logging::install();
+    logging::nameThisThread("main");
 
     // dpp paces voice packets with short sleeps on its socket thread. At
     // Windows' default 15.6ms timer granularity they overshoot enough to

@@ -3,6 +3,7 @@
 #include "Labels.h"
 #include "SongPlayer.h"
 #include "ResolverWorker.h"
+#include "Log.h"
 
 #include <dpp/dpp.h>
 
@@ -264,6 +265,8 @@ PlaybackController::QueueSnapshot PlaybackController::queueSnapshot()
 
 void PlaybackController::playbackWorker()
 {
+    logging::nameThisThread("worker");
+
     while (running) {
         Song song;
         dpp::discord_voice_client *voiceClient = nullptr;
