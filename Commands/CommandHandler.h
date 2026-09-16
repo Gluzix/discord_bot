@@ -8,6 +8,7 @@
 #include <utility>
 
 class PlaybackController;
+class VoiceRejoiner;
 
 class CommandHandler
 {
@@ -24,7 +25,11 @@ private:
         commands.emplace(cmd->name(), std::move(cmd));
     }
 
+    void setupCommands();
+    void setupBot();
+
     std::shared_ptr<dpp::cluster> bot;
     std::shared_ptr<PlaybackController> playback;
+    std::shared_ptr<VoiceRejoiner> rejoiner;
     std::unordered_map<std::string, std::unique_ptr<ICommand>> commands{};
 };

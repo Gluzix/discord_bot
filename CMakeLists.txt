@@ -47,6 +47,7 @@ add_executable(discord_bot
   Runner/WindowsProcessRunner.h Runner/WindowsProcessRunner.cpp
   Playback/PlaybackController.h Playback/PlaybackController.cpp
   VoiceConnector.h VoiceConnector.cpp
+  VoiceRejoiner.h VoiceRejoiner.cpp
   Messages.h
   Commands/PauseCommand.h Commands/PauseCommand.cpp
   Commands/ResumeCommand.h Commands/ResumeCommand.cpp
@@ -58,6 +59,7 @@ add_executable(discord_bot
   Helpers/YoutubeInput.h Helpers/YoutubeInput.cpp
   Playback/ResolverWorker.h Playback/ResolverWorker.cpp
   Playback/SongPlayer.h Playback/SongPlayer.cpp
+  Playback/VoiceDrainWatchdog.h Playback/VoiceDrainWatchdog.cpp
   Playback/Song.h
 )
 

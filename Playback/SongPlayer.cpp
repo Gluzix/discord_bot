@@ -1,5 +1,6 @@
 #include "SongPlayer.h"
 #include "PcmResampler.h"
+#include "VoiceDrainWatchdog.h"
 #include "WindowsProcessRunner.h"
 #include "Messages.h"
 #include "Labels.h"
@@ -20,7 +21,7 @@ void SongPlayer::arm()
     isPlaying = true;
 }
 
-bool SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
+SongPlayer::Outcome SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
 {
     {
         std::lock_guard<std::mutex> lock(queueMutex);
@@ -30,6 +31,7 @@ bool SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
         bytesToDiscard = 0;
     }
     currentSongFailed = false;
+    voiceLost = false;
 
     decoderThread = std::thread(&SongPlayer::decode, this, std::ref(song));
     senderThread = std::thread(&SongPlayer::streamAudio, this, voiceClient);
@@ -39,6 +41,13 @@ bool SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
     // It has to happen before the decoder join - a decoder stuck in yt-dlp
     // can outlive stop()'s bounded wait, and past that the client may be gone.
     senderThread.join();
+
+    // dpp may already have destroyed the client it gave up on - not one
+    // call more, not even is_paused().
+    if (voiceLost) {
+        decoderThread.join();
+        return Outcome::VoiceLost;
+    }
 
     // Leftover audio means the song was cut short (skip/stop): flush dpp's
     // ~1s buffer so the next song doesn't queue up behind this one's tail.
@@ -56,7 +65,7 @@ bool SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
     }
 
     decoderThread.join();
-    return !currentSongFailed;
+    return currentSongFailed ? Outcome::Failed : Outcome::Finished;
 }
 
 void SongPlayer::stop()
@@ -116,6 +125,12 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
     // and hold the deep buffer here as PCM, which no rekey can spoil.
     const float MAX_BUFFERED_SECONDS = 1.0f;
 
+    // A dropped voice session leaves dpp retrying forever with a send buffer
+    // that never drains again. Ten seconds is far outside anything healthy
+    // and leaves dpp's own retry chain time to finish or die first.
+    const std::chrono::seconds VOICE_DEAD_AFTER(10);
+    VoiceDrainWatchdog watchdog(VOICE_DEAD_AFTER);
+
     // The decoder fills the queue with ready-to-send packets of exactly
     // dpp::send_audio_raw_max_length bytes; only the final one may be shorter.
     while (isPlaying) {
@@ -137,15 +152,38 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
 
         // Never call into dpp while holding queueMutex - a foreign lock
         // inside our critical section is how the whole pipeline wedges.
-        while (isPlaying && voiceClient->get_secs_remaining() > MAX_BUFFERED_SECONDS) {
+        while (isPlaying) {
+            // dpp sets terminating at least 100ms before it destroys the client.
+            if (voiceClient->terminating) {
+                voiceLost = true;
+                break;
+            }
+            const float bufferedSeconds = voiceClient->get_secs_remaining();
+            if (watchdog.observe(bufferedSeconds, voiceClient->is_paused())) {
+                voiceLost = true;
+                break;
+            }
+            if (bufferedSeconds <= MAX_BUFFERED_SECONDS) {
+                break;
+            }
+
             std::unique_lock<std::mutex> lock(queueMutex);
             queueCv.wait_for(lock, std::chrono::milliseconds(100), [this] {
                 return !isPlaying;
             });
         }
+        if (voiceLost) {
+            stop(); // a decoder waiting on a full queue has nobody else to wake it
+        }
         if (!isPlaying) break;
 
+        if (voiceClient->terminating) {
+            voiceLost = true;
+            stop();
+            break;
+        }
         voiceClient->send_audio_raw((uint16_t*)packet.data(), packet.size());
+        watchdog.reset();
     }
 
     isPlaying = false;

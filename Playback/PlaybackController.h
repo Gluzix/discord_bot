@@ -5,6 +5,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -97,6 +98,11 @@ public:
     // jump), 0 when nothing was buffered yet, or -1 when nothing is playing.
     int forward(int seconds);
 
+    // Called (from the worker thread) when the voice client stopped taking
+    // audio: the session is dropped and the song put back, so the handler
+    // only has to get a working connection. Set it before playback starts.
+    void setVoiceLostHandler(std::function<void(uint64_t guildId, uint64_t channelId)> handler);
+
     // Called by the bot's on_voice_ready handler once a voice connection
     // can accept audio.
     void onVoiceReady(const dpp::voice_ready_t &event);
@@ -136,6 +142,7 @@ private:
     LoopMode loopMode{LoopMode::Off};
     bool skipRequested{false}; // song-mode: a skipped song must not requeue itself
     std::string currentSongLabel; // pre-rendered markdown for /queue
+    std::function<void(uint64_t, uint64_t)> voiceLostHandler;
     uint64_t nextSongId{1};
     std::atomic<bool> running{true};
     std::thread workerThread;
