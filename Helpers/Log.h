@@ -8,7 +8,8 @@ namespace logging {
 
 // Routes every qDebug/qWarning/qCritical and every dpp log line into
 // logs/discord_bot-<start time>.log (working directory) and still to the
-// console. Call once at the top of main(), before anything logs.
+// console. Call once at the top of main(), after nameThisThread so the first
+// line carries the name, and before anything logs.
 void install();
 
 // Names the calling thread for the log and for the debugger.
