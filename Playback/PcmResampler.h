@@ -14,6 +14,8 @@ struct AVFrame;
 struct AVIOContext;
 struct SwrContext;
 
+class ChunkedSource;
+
 // Decodes one media url into 48kHz s16 stereo PCM, handed out as packets of
 // a fixed size. Knows nothing about threads, queues, or Discord.
 class PcmResampler
@@ -51,8 +53,6 @@ public:
     double durationSeconds() const;
 
 private:
-    struct ChunkedSource; // fetches the url in bounded ranges - see the .cpp
-
     struct PendingSeek
     {
         double seconds{0};
