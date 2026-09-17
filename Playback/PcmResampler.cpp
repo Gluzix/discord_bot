@@ -10,8 +10,13 @@
 #include <cstring>
 
 extern "C" {
+#include <libavutil/dict.h>
+#include <libavutil/frame.h>
+#include <libavutil/mem.h>
+#include <libavutil/rational.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavformat/avio.h>
 #include <libswresample/swresample.h>
 }
 
