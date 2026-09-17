@@ -1,4 +1,4 @@
-#include "ForwardCommand.h"
+#include "RewindCommand.h"
 #include "PlaybackController.h"
 #include "TimeText.h"
 
@@ -6,24 +6,24 @@
 
 #include <algorithm>
 
-ForwardCommand::ForwardCommand(std::shared_ptr<PlaybackController> playback_)
-    : Command("forward", "jump ahead in the current song")
+RewindCommand::RewindCommand(std::shared_ptr<PlaybackController> playback_)
+    : Command("rewind", "jump back in the current song")
     , playback(playback_)
 {
 }
 
-dpp::slashcommand ForwardCommand::definition(dpp::snowflake botId) const
+dpp::slashcommand RewindCommand::definition(dpp::snowflake botId) const
 {
     dpp::slashcommand cmd(name(), description(), botId);
     cmd.add_option(
-        dpp::command_option(dpp::co_integer, "seconds", "how far to jump (default 10)", false)
+        dpp::command_option(dpp::co_integer, "seconds", "how far to jump back (default 10)", false)
             .set_min_value(1)
             .set_max_value(600)
     );
     return cmd;
 }
 
-void ForwardCommand::execute(const dpp::slashcommand_t &event)
+void RewindCommand::execute(const dpp::slashcommand_t &event)
 {
     if (!userMayControl(event)) {
         return;
@@ -35,13 +35,13 @@ void ForwardCommand::execute(const dpp::slashcommand_t &event)
         seconds = std::clamp<int64_t>(std::get<int64_t>(secondsParameter), 1, 600);
     }
 
-    PlaybackController::SeekResult result = playback->seekBy(static_cast<int>(seconds));
+    PlaybackController::SeekResult result = playback->seekBy(-static_cast<int>(seconds));
     if (!result.playing) {
         event.reply(messages::nothingPlaying);
     } else if (!result.seekable) {
         event.reply(messages::songStillLoading);
     } else {
-        event.reply(messages::forwardedTo
+        event.reply(messages::rewoundTo
                     + timetext::formatProgress(result.positionSeconds, result.durationSeconds));
     }
 }

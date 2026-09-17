@@ -55,10 +55,12 @@ inline constexpr const char* pause            = "Pausing currently playing song"
 inline constexpr const char* resume           = "Resuming currently paused song";
 inline constexpr const char* nothingToResume   = "Nothing to resume";
 
-// /forward
-inline constexpr const char* forwardedPrefix  = "Forwarded ~";
-inline constexpr const char* forwardedSuffix  = "s!";
-inline constexpr const char* nothingBuffered  = "Nothing buffered to skip yet - try again in a moment!";
+// /forward, /rewind, /seek
+inline constexpr const char* forwardedTo      = "Forwarded to ";
+inline constexpr const char* rewoundTo        = "Rewound to ";
+inline constexpr const char* jumpedTo         = "Jumped to ";
+inline constexpr const char* songStillLoading = "That song is still loading - try again in a moment!";
+inline constexpr const char* invalidPosition  = "Give me a position like 90, 1:30 or 1:02:03!";
 
 // /loop
 inline constexpr const char* loopSong  = "Looping the current song!";

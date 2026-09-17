@@ -96,6 +96,12 @@ void PlaybackController::noteRequest(const dpp::slashcommand_t &event)
     }
 }
 
+bool PlaybackController::isSongPlaying()
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return songInProgress;
+}
+
 size_t PlaybackController::skip(size_t count)
 {
     size_t fromQueue = 0;
@@ -181,13 +187,38 @@ bool PlaybackController::resume()
     return false;
 }
 
-int PlaybackController::forward(int seconds)
+namespace {
+
+// Reached only with a song in progress, so playing is true either way.
+PlaybackController::SeekResult toSeekResult(const std::optional<SongPlayer::Position> &position)
 {
-    // Only asks "is a song in progress?" - the drop happens in the player.
-    if (clientIfSongInProgress() == nullptr) {
-        return -1;
+    PlaybackController::SeekResult result;
+    result.playing = true;
+    if (position) {
+        result.seekable = true;
+        result.positionSeconds = position->seconds;
+        result.durationSeconds = position->durationSeconds;
     }
-    return songPlayer->forward(seconds);
+    return result;
+}
+
+}
+
+PlaybackController::SeekResult PlaybackController::seekBy(int deltaSeconds)
+{
+    // Only asks "is a song in progress?" - the jump happens in the player.
+    if (!isSongPlaying()) {
+        return SeekResult{};
+    }
+    return toSeekResult(songPlayer->seekBy(deltaSeconds));
+}
+
+PlaybackController::SeekResult PlaybackController::seekTo(int positionSeconds)
+{
+    if (!isSongPlaying()) {
+        return SeekResult{};
+    }
+    return toSeekResult(songPlayer->seekTo(positionSeconds));
 }
 
 void PlaybackController::setLoopMode(LoopMode mode)

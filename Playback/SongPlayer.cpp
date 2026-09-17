@@ -29,7 +29,15 @@ SongPlayer::Outcome SongPlayer::play(dpp::discord_voice_client *voiceClient, Son
         decodingFinished = false;
         audioQueue = {};
         queuedBytes = 0;
-        bytesToDiscard = 0;
+        playedBytes = 0;
+        seekTicket = 0;
+        seekInFlight = false;
+        bytesBeforeSeek = 0;
+        droppedForSeek = 0;
+        songEnding = false;
+        flushClient = false;
+        activeResampler = nullptr;
+        durationSeconds = 0;
     }
     currentSongFailed = false;
     voiceLost = false;
@@ -80,41 +88,62 @@ void SongPlayer::stop()
     queueCv.notify_all();
 }
 
-int SongPlayer::forward(int seconds)
+std::optional<SongPlayer::Position> SongPlayer::seekBy(int deltaSeconds)
 {
-    if (seconds <= 0) {
-        return 0;
+    return seek(deltaSeconds, true);
+}
+
+std::optional<SongPlayer::Position> SongPlayer::seekTo(int seconds)
+{
+    return seek(seconds, false);
+}
+
+std::optional<SongPlayer::Position> SongPlayer::seek(double seconds, bool relative)
+{
+    std::unique_lock<std::mutex> lock(queueMutex);
+    if (!isPlaying || songEnding || activeResampler == nullptr) {
+        return std::nullopt;
     }
 
-    // The buffered PCM is dropped right here; whatever it doesn't cover the
-    // decoder skips by decoding and discarding. dpp's ~1s send buffer stays
-    // untouched on purpose: flushing it means calling the voice client while
-    // the sender thread is live on it, and dpp's send path has no lock
-    // against that.
-    const size_t bytesToSkip = static_cast<size_t>(seconds) * BYTES_PER_SECOND;
-    size_t skippedBytes = 0;
-    {
-        std::lock_guard<std::mutex> lock(queueMutex);
-        while (!audioQueue.empty() && skippedBytes < bytesToSkip) {
-            skippedBytes += audioQueue.front().size();
+    const double current = static_cast<double>(playedBytes) / BYTES_PER_SECOND;
+    double target = std::max(relative ? current + seconds : seconds, 0.0);
+    if (durationSeconds > 0) {
+        target = std::min(target, durationSeconds); // a target at the end just ends the song
+    }
+
+    // A forward the queue already holds needs no decoder: drop whole packets.
+    const double aheadSeconds = target - current;
+    if (!seekInFlight && aheadSeconds > 0
+        && aheadSeconds * BYTES_PER_SECOND <= static_cast<double>(queuedBytes)) {
+        const size_t aheadBytes = static_cast<size_t>(aheadSeconds * BYTES_PER_SECOND);
+        size_t dropped = 0;
+        while (!audioQueue.empty() && dropped < aheadBytes) {
+            dropped += audioQueue.front().size();
             queuedBytes -= audioQueue.front().size();
             audioQueue.pop();
         }
-        if (skippedBytes < bytesToSkip && !decodingFinished) {
-            bytesToDiscard += bytesToSkip - skippedBytes;
-            skippedBytes = bytesToSkip;
-        }
-    }
-    queueCv.notify_all(); // a decoder waiting on a full queue has work again
-
-    if (skippedBytes == 0) {
-        return 0; // nothing left beyond dpp's own buffer
+        playedBytes += dropped;
+        flushClient = true;
+        const Position position{static_cast<double>(playedBytes) / BYTES_PER_SECOND, durationSeconds};
+        lock.unlock();
+        queueCv.notify_all();
+        return position;
     }
 
-    // Nearest second, but a real jump never reports as 0 - the reply would
-    // claim nothing happened.
-    int skipped = static_cast<int>((skippedBytes + BYTES_PER_SECOND / 2) / BYTES_PER_SECOND);
-    return std::max(skipped, 1);
+    bytesBeforeSeek = playedBytes;
+    droppedForSeek = queuedBytes;
+    audioQueue = {};
+    queuedBytes = 0;
+    seekInFlight = true;   // every packet still in the decoder is from before the jump
+    decodingFinished = false;
+    flushClient = true;
+    ++seekTicket;
+    activeResampler->requestSeek(target, seekTicket);
+    // Optimistic, so a second jump issued before this one lands builds on it.
+    playedBytes = static_cast<uint64_t>(target * BYTES_PER_SECOND);
+    lock.unlock();
+    queueCv.notify_all();
+    return Position{target, durationSeconds};
 }
 
 void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
@@ -134,29 +163,60 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
     const std::chrono::seconds VOICE_DEAD_AFTER(10);
     VoiceDrainWatchdog watchdog(VOICE_DEAD_AFTER);
 
+    // A seek asks for dpp's ~1s tail to go, so the jump is audible at once.
+    // This thread owns the client, so it is the one that may flush it.
+    auto takeFlushRequest = [this] {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        const bool wanted = flushClient;
+        flushClient = false;
+        return wanted;
+    };
+    auto flushClientNow = [&] {
+        // dpp sets terminating at least 100ms before it destroys the client.
+        if (voiceClient->terminating) {
+            voiceLost = true;
+            stop();
+            return false;
+        }
+        voiceClient->stop_audio();
+        return true;
+    };
+
     // The decoder fills the queue with ready-to-send packets of exactly
     // dpp::send_audio_raw_max_length bytes; only the final one may be shorter.
     while (isPlaying) {
         std::vector<uint8_t> packet;
+        bool flushNow = false;
         {
             std::unique_lock<std::mutex> lock(queueMutex);
             queueCv.wait(lock, [this] {
-                return !audioQueue.empty() || decodingFinished || !isPlaying;
+                return !audioQueue.empty() || decodingFinished || flushClient || !isPlaying;
             });
-            if (audioQueue.empty()) {
-                if (decodingFinished) break;
+            if (flushClient) {
+                flushClient = false;
+                flushNow = true;
+            } else if (audioQueue.empty()) {
+                if (decodingFinished) {
+                    songEnding = true; // nothing left to seek in
+                    break;
+                }
                 continue;
+            } else {
+                packet = std::move(audioQueue.front());
+                audioQueue.pop();
+                queuedBytes -= packet.size();
+                playedBytes += packet.size();
             }
-            packet = std::move(audioQueue.front());
-            audioQueue.pop();
-            queuedBytes -= packet.size();
+        }
+        if (flushNow) {
+            if (!flushClientNow()) break;
+            continue;
         }
         queueCv.notify_one(); // room for the decoder
 
         // Never call into dpp while holding queueMutex - a foreign lock
         // inside our critical section is how the whole pipeline wedges.
         while (isPlaying) {
-            // dpp sets terminating at least 100ms before it destroys the client.
             if (voiceClient->terminating) {
                 voiceLost = true;
                 break;
@@ -166,19 +226,28 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
                 voiceLost = true;
                 break;
             }
+            if (takeFlushRequest()) {
+                flushNow = true;
+                break;
+            }
             if (bufferedSeconds <= MAX_BUFFERED_SECONDS) {
                 break;
             }
 
             std::unique_lock<std::mutex> lock(queueMutex);
             queueCv.wait_for(lock, std::chrono::milliseconds(100), [this] {
-                return !isPlaying;
+                return !isPlaying || flushClient;
             });
         }
         if (voiceLost) {
             stop(); // a decoder waiting on a full queue has nobody else to wake it
         }
         if (!isPlaying) break;
+        if (flushNow) {
+            // The packet in hand is from before the jump - drop it.
+            if (!flushClientNow()) break;
+            continue;
+        }
 
         if (voiceClient->terminating) {
             voiceLost = true;
@@ -189,7 +258,8 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
         watchdog.reset();
     }
 
-    isPlaying = false;
+    // Not a plain store: the decoder waits on queueCv until the song ends.
+    stop();
 }
 
 void SongPlayer::decode(Song &song)
@@ -289,24 +359,56 @@ void SongPlayer::decode(Song &song)
         notifyUser(nowPlaying);
     }
 
-    resampler.run(
-        [this](std::vector<uint8_t> pkt) {
-            std::unique_lock<std::mutex> lock(queueMutex);
-            queueCv.wait(lock, [this] {
-                return queuedBytes < MAX_QUEUED_BYTES || bytesToDiscard > 0 || !isPlaying;
-            });
-            if (!isPlaying) {
-                return;
-            }
-            if (bytesToDiscard > 0) {
-                // Whole packets only - a trimmed one would be silence-padded by dpp.
-                bytesToDiscard -= std::min(bytesToDiscard, pkt.size());
-                return;
-            }
-            queuedBytes += pkt.size();
-            audioQueue.push(std::move(pkt));
-            lock.unlock();
-            queueCv.notify_one();
-        },
-        [this] { return isPlaying.load(); });
+    auto sink = [this](std::vector<uint8_t> pkt) {
+        std::unique_lock<std::mutex> lock(queueMutex);
+        queueCv.wait(lock, [this] {
+            return queuedBytes < MAX_QUEUED_BYTES || seekInFlight || !isPlaying;
+        });
+        if (!isPlaying || seekInFlight) {
+            return; // a packet from before the jump
+        }
+        queuedBytes += pkt.size();
+        audioQueue.push(std::move(pkt));
+        lock.unlock();
+        queueCv.notify_one();
+    };
+
+    auto onSeeked = [this](uint64_t ticket, bool ok) {
+        std::unique_lock<std::mutex> lock(queueMutex);
+        if (ticket != seekTicket) {
+            return; // an older seek: a newer one is still on its way
+        }
+        seekInFlight = false;
+        if (!ok) {
+            playedBytes = bytesBeforeSeek + droppedForSeek; // the dropped queue was a forward
+        }
+        lock.unlock();
+        queueCv.notify_all();
+    };
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        activeResampler = &resampler;
+        durationSeconds = resampler.durationSeconds();
+    }
+
+    // The decoder has to outlive end of stream: it runs a minute ahead, so
+    // otherwise the last minute of every song couldn't be rewound.
+    for (;;) {
+        resampler.run(sink, [this] { return isPlaying.load(); }, onSeeked);
+
+        std::unique_lock<std::mutex> lock(queueMutex);
+        decodingFinished = true; // the sender may end the song once the queue drains
+        queueCv.notify_all();
+        queueCv.wait(lock, [this] { return seekInFlight || !isPlaying; });
+        if (!isPlaying) {
+            break;
+        }
+        decodingFinished = false; // a rewind after end of stream: decode again
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        activeResampler = nullptr; // it must not outlive the resampler below
+    }
 }
