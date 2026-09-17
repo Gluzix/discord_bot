@@ -16,6 +16,8 @@ Built on [D++ (DPP)](https://dpp.dev) for Discord, FFmpeg for decoding, [yt-dlp]
 | `/pause` / `/resume` | What they say. |
 | `/loop mode:<song\|queue\|off>` | Repeat the current song, rotate the whole queue, or stop looping. |
 | `/forward [seconds]` | Jumps ahead in the current song (default 10, up to 600). |
+| `/rewind [seconds]` | Jumps back in the current song (default 10, up to 600). |
+| `/seek position:<90 \| 1:30 \| 1:02:03>` | Jumps to a position in the current song. |
 | `/join` / `/leave` | Summon the bot to your voice channel, or send it away. |
 
 A few behaviours worth knowing:
@@ -89,7 +91,6 @@ The codebase carries a few hard-won rules that are easy to break by accident:
 - One voice session at a time. The bot is built for a single server.
 - If yt-dlp is not on `PATH`, the fallback path in `WindowsProcessRunner.cpp` is the author's; change it or, better, put yt-dlp on your `PATH`.
 - Playlists are capped at 100 entries.
-- No seeking backwards yet; `/forward` only moves ahead.
 
 ## License
 

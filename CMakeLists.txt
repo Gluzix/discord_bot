@@ -53,6 +53,8 @@ add_executable(discord_bot
   Commands/ResumeCommand.h Commands/ResumeCommand.cpp
   Commands/LoopCommand.h Commands/LoopCommand.cpp
   Commands/ForwardCommand.h Commands/ForwardCommand.cpp
+  Commands/RewindCommand.h Commands/RewindCommand.cpp
+  Commands/SeekCommand.h Commands/SeekCommand.cpp
   Commands/PlaylistCommand.h Commands/PlaylistCommand.cpp
   Playback/PcmResampler.h Playback/PcmResampler.cpp
   Helpers/Labels.h Helpers/Labels.cpp

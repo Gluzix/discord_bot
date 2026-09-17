@@ -12,6 +12,8 @@
 #include "ResumeCommand.h"
 #include "LoopCommand.h"
 #include "ForwardCommand.h"
+#include "RewindCommand.h"
+#include "SeekCommand.h"
 #include "PlaylistCommand.h"
 #include "VoiceRejoiner.h"
 #include <QDebug>
@@ -46,6 +48,8 @@ void CommandHandler::setupCommands()
     add<ResumeCommand>(playback);
     add<LoopCommand>(playback);
     add<ForwardCommand>(playback);
+    add<RewindCommand>(playback);
+    add<SeekCommand>(playback);
     add<PlaylistCommand>(playback);
 }
 

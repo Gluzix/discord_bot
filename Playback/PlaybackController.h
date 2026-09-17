@@ -127,6 +127,7 @@ private:
 
     // Bookkeeping shared by every enqueue. Call with stateMutex held.
     void noteRequest(const dpp::slashcommand_t &event);
+    bool isSongPlaying();
 
     // One locked snapshot: the current song's voice client, or nullptr when
     // no song is in progress. Callers work with the returned copy only.

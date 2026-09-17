@@ -96,6 +96,12 @@ void PlaybackController::noteRequest(const dpp::slashcommand_t &event)
     }
 }
 
+bool PlaybackController::isSongPlaying()
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return songInProgress;
+}
+
 size_t PlaybackController::skip(size_t count)
 {
     size_t fromQueue = 0;
@@ -201,7 +207,7 @@ PlaybackController::SeekResult toSeekResult(const std::optional<SongPlayer::Posi
 PlaybackController::SeekResult PlaybackController::seekBy(int deltaSeconds)
 {
     // Only asks "is a song in progress?" - the jump happens in the player.
-    if (clientIfSongInProgress() == nullptr) {
+    if (!isSongPlaying()) {
         return SeekResult{};
     }
     return toSeekResult(songPlayer->seekBy(deltaSeconds));
@@ -209,7 +215,7 @@ PlaybackController::SeekResult PlaybackController::seekBy(int deltaSeconds)
 
 PlaybackController::SeekResult PlaybackController::seekTo(int positionSeconds)
 {
-    if (clientIfSongInProgress() == nullptr) {
+    if (!isSongPlaying()) {
         return SeekResult{};
     }
     return toSeekResult(songPlayer->seekTo(positionSeconds));
