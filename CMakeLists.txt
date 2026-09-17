@@ -65,6 +65,7 @@ add_executable(discord_bot
   Playback/SongPlayer.h Playback/SongPlayer.cpp
   Playback/VoiceDrainWatchdog.h Playback/VoiceDrainWatchdog.cpp
   Playback/Song.h
+  Playback/ChunkedSource.h Playback/ChunkedSource.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
