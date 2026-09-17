@@ -308,5 +308,6 @@ void SongPlayer::decode(Song &song)
             lock.unlock();
             queueCv.notify_one();
         },
-        [this] { return isPlaying.load(); });
+        [this] { return isPlaying.load(); },
+        nullptr);
 }

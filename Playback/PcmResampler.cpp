@@ -12,6 +12,7 @@ extern "C" {
 #include <libavutil/dict.h>
 #include <libavutil/frame.h>
 #include <libavutil/mem.h>
+#include <libavutil/rational.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
@@ -163,6 +164,15 @@ PcmResampler::PcmResampler(size_t packetBytes_)
 
 PcmResampler::~PcmResampler()
 {
+    auto asMs = [](std::chrono::steady_clock::duration d) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
+    };
+    if (readTime != std::chrono::steady_clock::duration::zero()) {
+        qDebug() << "Total read (network) time: " << asMs(readTime) << "ms";
+        qDebug() << "Total decode/resample time: " << asMs(decodeTime - sinkTime) << "ms";
+        qDebug() << "Total wait on the PCM queue: " << asMs(sinkTime) << "ms";
+    }
+
     swr_free(&swr);
     avcodec_free_context(&codecContext);
     avformat_close_input(&format); // leaves our pb alone (AVFMT_FLAG_CUSTOM_IO)
@@ -207,7 +217,14 @@ PcmResampler::Result PcmResampler::open(const std::string &directUrl)
         return Result::NoAudio;
     }
 
-    const AVCodecParameters *params = format->streams[audioStream]->codecpar;
+    const AVStream *stream = format->streams[audioStream];
+    if (format->duration != AV_NOPTS_VALUE && format->duration > 0) {
+        durationFromContainer = static_cast<double>(format->duration) / AV_TIME_BASE;
+    } else if (stream->duration != AV_NOPTS_VALUE && stream->duration > 0) {
+        durationFromContainer = static_cast<double>(stream->duration) * av_q2d(stream->time_base);
+    }
+
+    const AVCodecParameters *params = stream->codecpar;
     const AVCodec *decoder = avcodec_find_decoder(params->codec_id);
     if (decoder == nullptr) {
         qDebug() << "No decoder for codec id" << params->codec_id;
@@ -232,7 +249,51 @@ PcmResampler::Result PcmResampler::open(const std::string &directUrl)
     return Result::Ok;
 }
 
-void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keepGoing)
+void PcmResampler::requestSeek(double seconds, uint64_t ticket)
+{
+    std::lock_guard<std::mutex> lock(pendingSeekMutex);
+    pendingSeek = PendingSeek{std::max(seconds, 0.0), ticket, true};
+}
+
+double PcmResampler::durationSeconds() const
+{
+    return durationFromContainer;
+}
+
+int64_t PcmResampler::secondsToStreamTs(double seconds) const
+{
+    const AVStream *stream = format->streams[audioStream];
+    int64_t ts = static_cast<int64_t>(seconds / av_q2d(stream->time_base));
+    if (stream->start_time != AV_NOPTS_VALUE) {
+        ts += stream->start_time;
+    }
+    return ts;
+}
+
+double PcmResampler::streamTsToSeconds(int64_t ts) const
+{
+    const AVStream *stream = format->streams[audioStream];
+    if (stream->start_time != AV_NOPTS_VALUE) {
+        ts -= stream->start_time;
+    }
+    return static_cast<double>(ts) * av_q2d(stream->time_base);
+}
+
+bool PcmResampler::frameEndsBy(const AVFrame *frame, double seconds) const
+{
+    if (frame->best_effort_timestamp == AV_NOPTS_VALUE) {
+        return false;
+    }
+    const int sampleRate = frame->sample_rate > 0 ? frame->sample_rate : codecContext->sample_rate;
+    if (sampleRate <= 0) {
+        return false;
+    }
+    const double end = streamTsToSeconds(frame->best_effort_timestamp)
+        + static_cast<double>(frame->nb_samples) / sampleRate;
+    return end <= seconds;
+}
+
+void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keepGoing, const SeekDone &onSeeked)
 {
     Q_ASSERT(sink && keepGoing); // callers must wire both
     if (!sink || !keepGoing) {
@@ -261,12 +322,6 @@ void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keep
         staging.resize(writePos + (converted > 0 ? (size_t)converted * BYTES_PER_SAMPLE_PAIR : 0));
     };
 
-    auto readTime = std::chrono::steady_clock::duration::zero();
-    auto decodeTime = std::chrono::steady_clock::duration::zero();
-    // The sink blocks whenever the bounded PCM queue is full, which is most
-    // of a song - counting that as decode time makes decoding look endless.
-    auto sinkTime = std::chrono::steady_clock::duration::zero();
-
     auto pushFullPackets = [&]() {
         size_t readPos = 0;
         while (staging.size() - readPos >= packetBytes) {
@@ -278,7 +333,42 @@ void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keep
         staging.erase(staging.begin(), staging.begin() + readPos);
     };
 
+    // A container seek lands on the cue at or before the target, which can be
+    // seconds early; while this is set, frames up to the target are dropped.
+    double skipUntilSeconds = -1.0;
+
+    auto applyPendingSeek = [&]() {
+        PendingSeek request;
+        {
+            std::lock_guard<std::mutex> lock(pendingSeekMutex);
+            if (!pendingSeek.set) {
+                return;
+            }
+            request = pendingSeek;
+            pendingSeek.set = false;
+        }
+
+        auto seekStart = std::chrono::steady_clock::now();
+        const bool ok = av_seek_frame(format, audioStream, secondsToStreamTs(request.seconds),
+                                      AVSEEK_FLAG_BACKWARD) >= 0;
+        if (ok) {
+            avcodec_flush_buffers(codecContext); // also clears the decoder's end-of-stream state
+            swr_init(swr);                       // drops the resampler's delay line
+            staging.clear();
+            skipUntilSeconds = request.seconds;
+        }
+        auto tookMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - seekStart).count();
+        qDebug() << "Seek to" << request.seconds << "s (ticket" << request.ticket << ") ok:" << ok
+                 << "in" << tookMs << "ms";
+        if (onSeeked) {
+            onSeeked(request.ticket, ok);
+        }
+    };
+
     while (keepGoing()) {
+        applyPendingSeek();
+
         auto t0 = std::chrono::steady_clock::now();
         int ret = av_read_frame(format, packet);
         auto t1 = std::chrono::steady_clock::now();
@@ -298,6 +388,11 @@ void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keep
         }
 
         while (avcodec_receive_frame(codecContext, frame) >= 0) {
+            if (skipUntilSeconds >= 0.0 && frameEndsBy(frame, skipUntilSeconds)) {
+                av_frame_unref(frame);
+                continue;
+            }
+            skipUntilSeconds = -1.0;
             convertIntoStaging((const uint8_t**)frame->data, frame->nb_samples);
             pushFullPackets();
             av_frame_unref(frame);
@@ -319,13 +414,6 @@ void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keep
         sinkTime += (std::chrono::steady_clock::now() - sinkStart);
     }
     decodeTime += (std::chrono::steady_clock::now() - drainStart);
-
-    auto asMs = [](std::chrono::steady_clock::duration d) {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(d).count();
-    };
-    qDebug() << "Total read (network) time: " << asMs(readTime) << "ms";
-    qDebug() << "Total decode/resample time: " << asMs(decodeTime - sinkTime) << "ms";
-    qDebug() << "Total wait on the PCM queue: " << asMs(sinkTime) << "ms";
 
     av_packet_free(&packet);
     av_frame_free(&frame);
