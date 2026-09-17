@@ -1,5 +1,6 @@
 #include "ForwardCommand.h"
 #include "PlaybackController.h"
+#include "TimeText.h"
 
 #include <dpp/dpp.h>
 
@@ -34,12 +35,13 @@ void ForwardCommand::execute(const dpp::slashcommand_t &event)
         seconds = std::clamp<int64_t>(std::get<int64_t>(secondsParameter), 1, 600);
     }
 
-    int skipped = playback->forward(static_cast<int>(seconds));
-    if (skipped < 0) {
+    PlaybackController::SeekResult result = playback->seekBy(static_cast<int>(seconds));
+    if (!result.playing) {
         event.reply(messages::nothingPlaying);
-    } else if (skipped == 0) {
-        event.reply(messages::nothingBuffered);
+    } else if (!result.seekable) {
+        event.reply(messages::songStillLoading);
     } else {
-        event.reply(messages::forwardedPrefix + std::to_string(skipped) + messages::forwardedSuffix);
+        event.reply(messages::forwardedTo
+                    + timetext::formatProgress(result.positionSeconds, result.durationSeconds));
     }
 }

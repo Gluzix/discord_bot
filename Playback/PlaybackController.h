@@ -93,10 +93,18 @@ public:
     // Sets the loop mode. Persists until changed or /stop turns it Off.
     void setLoopMode(LoopMode mode);
 
-    // Jumps ahead in the current song by discarding buffered PCM.
-    // Returns the whole seconds actually skipped (at least 1 for any real
-    // jump), 0 when nothing was buffered yet, or -1 when nothing is playing.
-    int forward(int seconds);
+    struct SeekResult
+    {
+        bool playing{false};       // a song is in progress
+        bool seekable{false};      // ... and the jump landed, so the fields below hold
+        double positionSeconds{0};
+        double durationSeconds{0}; // 0 = unknown
+    };
+
+    // Jumps in the current song, by `deltaSeconds` or to an absolute
+    // position, and reports where playback landed.
+    SeekResult seekBy(int deltaSeconds);
+    SeekResult seekTo(int positionSeconds);
 
     // Called (from the worker thread) when the voice client stopped taking
     // audio: the session is dropped and the song put back, so the handler
