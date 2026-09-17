@@ -4,9 +4,16 @@
 
 #include <thread>
 
+#include <cstring>
+#include <cstdio>
+#include <algorithm>
+#include <chrono>
+
 extern "C" {
 #include <libavutil/dict.h>
 #include <libavformat/avformat.h>
+#include <libavformat/avio.h>
+#include <libavutil/error.h>
 }
 
 ChunkedSource::ChunkedSource() {}

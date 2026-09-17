@@ -2,9 +2,14 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 struct AVDictionary;
 
+// googlevideo serves an open-ended read at about twice the audio bitrate, but
+// a bounded range at full speed (the reason yt-dlp downloads in chunks). So
+// the file is fetched in bounded ranges through FFmpeg's own http client, one
+// complete request per chunk, and the demuxer reads from memory.
 class ChunkedSource
 {
 public:
