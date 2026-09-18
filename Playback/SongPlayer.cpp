@@ -7,6 +7,7 @@
 #include "Log.h"
 
 #include <dpp/dpp.h>
+#include <QDebug>
 
 #include <algorithm>
 #include <chrono>
@@ -392,10 +393,22 @@ void SongPlayer::decode(Song &song)
         durationSeconds = resampler.durationSeconds();
     }
 
+    // A rewind re-runs a stream that is already gone - say it once per song.
+    bool streamLostAnnounced = false;
+
     // The decoder has to outlive end of stream: it runs a minute ahead, so
     // otherwise the last minute of every song couldn't be rewound.
     for (;;) {
-        resampler.run(sink, [this] { return isPlaying.load(); }, onSeeked);
+        const PcmResampler::RunEnd runEnd = resampler.run(sink, [this] { return isPlaying.load(); }, onSeeked);
+        if (runEnd == PcmResampler::RunEnd::ReadError && !streamLostAnnounced) {
+            streamLostAnnounced = true;
+            qDebug() << "The audio stream died mid-song - telling the channel";
+            // Never an edit: the "Playing:" reply stays as history.
+            dpp::message lost(messages::streamLost);
+            lost.channel_id = event.command.channel_id;
+            lost.set_allowed_mentions();
+            event.owner->message_create(lost);
+        }
 
         std::unique_lock<std::mutex> lock(queueMutex);
         decodingFinished = true; // the sender may end the song once the queue drains

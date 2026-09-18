@@ -34,6 +34,7 @@ inline constexpr const char* errorResolve     = "Couldn't get the audio from tha
 inline constexpr const char* errorOpenStream  = "Couldn't open the audio stream :(";
 inline constexpr const char* errorReadStream  = "Couldn't read the audio stream :(";
 inline constexpr const char* errorNoAudio     = "That link has no audio stream :(";
+inline constexpr const char* streamLost       = "Lost the audio stream for that song - moving on!";
 
 // playback control policy
 inline constexpr const char* mustBeWithBot        = "You need to be in my voice channel to control the music!";
