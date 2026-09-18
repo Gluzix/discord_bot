@@ -17,6 +17,24 @@
 #include "PlaylistCommand.h"
 #include "VoiceRejoiner.h"
 #include <QDebug>
+#include <QString>
+
+#include <chrono>
+#include <cstdint>
+#include <string>
+
+namespace {
+
+// Discord drops an interaction 3 s after it was issued, so how much of that
+// budget was already gone on arrival tells a late dispatch from a slow handler.
+int64_t interactionAgeMs(const dpp::slashcommand_t &event)
+{
+    const std::chrono::duration<double> issuedAt(event.command.id.get_creation_time());
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch() - issuedAt).count();
+}
+
+}
 
 CommandHandler::CommandHandler()
 {
@@ -119,10 +137,20 @@ void CommandHandler::setupBot()
     }, 30);
 
     bot->on_slashcommand([this](const dpp::slashcommand_t& event) {
+        const QString name = QString::fromStdString("/" + event.command.get_command_name());
         auto command = commands.find(event.command.get_command_name());
-        if (command != commands.end()) {
-            command->second->execute(event);
+        if (command == commands.end()) {
+            qDebug().noquote() << name << "is not a known command, ignored";
+            return;
         }
+
+        qDebug().noquote() << name << "received" << interactionAgeMs(event)
+                           << "ms after it was issued";
+        const std::chrono::steady_clock::time_point startedAt = std::chrono::steady_clock::now();
+        command->second->execute(event);
+        qDebug().noquote() << name << "handled in"
+                           << std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::steady_clock::now() - startedAt).count() << "ms";
     });
 
     bot->on_ready([this](const dpp::ready_t& event) {
