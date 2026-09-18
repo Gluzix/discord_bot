@@ -14,6 +14,13 @@ VoiceRejoiner::VoiceRejoiner(dpp::cluster &bot_)
 
 void VoiceRejoiner::rejoin(uint64_t guildId, uint64_t channelId)
 {
+    // Joining channel 0 is a leave - a recovery must never become one.
+    if (channelId == 0) {
+        bot.log(dpp::ll_warning, "Voice rejoin for guild " + std::to_string(guildId)
+                                 + " skipped: the channel is unknown");
+        return;
+    }
+
     {
         std::lock_guard<std::mutex> lock(mutex);
         Pending &entry = pending[guildId];

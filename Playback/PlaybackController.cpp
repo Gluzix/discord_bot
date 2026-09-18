@@ -93,6 +93,9 @@ void PlaybackController::noteRequest(const dpp::slashcommand_t &event)
     dpp::voiceconn* vc = event.from()->get_voice(event.command.guild_id);
     if (vc && vc->voiceclient && vc->voiceclient->is_ready()) {
         currentVoiceClient = vc->voiceclient.get();
+        // The session state must be whole again after a /stop zeroed it.
+        activeChannelId = static_cast<uint64_t>(currentVoiceClient->channel_id);
+        activeGuildId = static_cast<uint64_t>(currentVoiceClient->server_id);
     }
 }
 
@@ -301,6 +304,10 @@ void PlaybackController::playbackWorker()
     while (running) {
         Song song;
         dpp::discord_voice_client *voiceClient = nullptr;
+        // Taken while the client is known-good; after a lost session it may
+        // already be destroyed, and these are the ids a rejoin has to use.
+        uint64_t songChannelId = 0;
+        uint64_t songGuildId = 0;
         {
             std::unique_lock<std::mutex> lock(stateMutex);
             // A front song the resolver is still on is left to it - popping
@@ -315,6 +322,8 @@ void PlaybackController::playbackWorker()
             song = std::move(songQueue.front());
             songQueue.pop_front();
             voiceClient = currentVoiceClient;
+            songChannelId = static_cast<uint64_t>(voiceClient->channel_id);
+            songGuildId = static_cast<uint64_t>(voiceClient->server_id);
             songInProgress = true;
             // Armed in the same critical section, so a skip/stop that sees the
             // song as in progress always reaches it - even before play().
@@ -349,8 +358,8 @@ void PlaybackController::playbackWorker()
                 if (sessionAlive && currentVoiceClient == voiceClient) {
                     currentVoiceClient = nullptr;
                     reportVoiceLost = voiceLostHandler;
-                    lostGuildId = activeGuildId;
-                    lostChannelId = activeChannelId;
+                    lostGuildId = songGuildId;
+                    lostChannelId = songChannelId;
                 }
             } else if (sessionAlive && loopMode == LoopMode::Song && endedNaturally) {
                 // Repeat-one: back to the front, quietly.
