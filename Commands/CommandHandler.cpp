@@ -102,6 +102,9 @@ void CommandHandler::setupBot()
         }
 
         if (event.state.channel_id == 0 && rejoiner->isPending(event.state.guild_id)) {
+            // A rejoin's own leave: it starts the join, and playback must not
+            // see it - that would stop the song and wipe the queue.
+            rejoiner->onBotLeft(event.state.guild_id);
             return;
         }
 
