@@ -32,19 +32,36 @@ void VoiceRejoiner::rejoin(uint64_t guildId, uint64_t channelId)
     leave(guildId, channelId);
 }
 
+uint64_t VoiceRejoiner::takeWaitForLeave(uint64_t guildId, int attempt)
+{
+    std::lock_guard<std::mutex> lock(mutex);
+    auto entry = pending.find(guildId);
+    if (entry == pending.end() || !entry->second.waitingForLeave) {
+        return 0;
+    }
+    // A timer armed by an older attempt must not end a newer attempt's wait.
+    if (attempt != 0 && attempt != entry->second.attempts) {
+        return 0;
+    }
+    entry->second.waitingForLeave = false;
+    return entry->second.channelId;
+}
+
 void VoiceRejoiner::onBotLeft(uint64_t guildId)
 {
-    uint64_t channelId = 0;
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        auto entry = pending.find(guildId);
-        if (entry == pending.end() || !entry->second.waitingForLeave) {
-            return;
-        }
-        entry->second.waitingForLeave = false;
-        channelId = entry->second.channelId;
+    const uint64_t channelId = takeWaitForLeave(guildId, 0);
+    if (channelId != 0) {
+        join(guildId, channelId, "left");
     }
-    join(guildId, channelId);
+}
+
+void VoiceRejoiner::onLeaveTimeout(uint64_t guildId, int attempt)
+{
+    const uint64_t channelId = takeWaitForLeave(guildId, attempt);
+    if (channelId != 0) {
+        join(guildId, channelId, "no leave confirmation after "
+                                 + std::to_string(LEAVE_CONFIRM_SECONDS) + " s");
+    }
 }
 
 void VoiceRejoiner::cancel(uint64_t guildId)
@@ -117,10 +134,11 @@ void VoiceRejoiner::leave(uint64_t guildId, uint64_t channelId)
 
     // Nothing to leave means no confirmation will ever come.
     if (shard->get_voice(guildId) == nullptr) {
-        join(guildId, channelId);
+        join(guildId, channelId, "not in voice");
         return;
     }
 
+    int attempt = 0;
     {
         std::lock_guard<std::mutex> lock(mutex);
         auto entry = pending.find(guildId);
@@ -128,21 +146,38 @@ void VoiceRejoiner::leave(uint64_t guildId, uint64_t channelId)
             return;
         }
         entry->second.waitingForLeave = true;
+        attempt = entry->second.attempts;
     }
 
     bot.log(dpp::ll_warning, "Voice rejoin: leaving guild " + std::to_string(guildId)
                              + " before rejoining channel " + std::to_string(channelId));
     shard->disconnect_voice(guildId);
+    armLeaveTimeout(guildId, attempt);
 }
 
-void VoiceRejoiner::join(uint64_t guildId, uint64_t channelId)
+// A gateway that died with the session swallows the leave, and then no
+// confirmation ever comes; tick()'s retry is a minute away.
+void VoiceRejoiner::armLeaveTimeout(uint64_t guildId, int attempt)
+{
+    std::weak_ptr<VoiceRejoiner> self = weak_from_this();
+    // The cluster runs this callback, so it outlives the call.
+    dpp::cluster *cluster = &bot;
+    cluster->start_timer([self, cluster, guildId, attempt](dpp::timer handle) {
+        cluster->stop_timer(handle); // one-shot
+        if (std::shared_ptr<VoiceRejoiner> rejoiner = self.lock()) {
+            rejoiner->onLeaveTimeout(guildId, attempt);
+        }
+    }, LEAVE_CONFIRM_SECONDS);
+}
+
+void VoiceRejoiner::join(uint64_t guildId, uint64_t channelId, const std::string &why)
 {
     dpp::discord_client *shard = bot.get_shard(0);
     if (shard == nullptr) {
         return;
     }
 
-    bot.log(dpp::ll_warning, "Voice rejoin: left, rejoining channel "
+    bot.log(dpp::ll_warning, "Voice rejoin: " + why + ", rejoining channel "
                              + std::to_string(channelId) + " in guild " + std::to_string(guildId));
     shard->connect_voice(guildId, channelId);
 }

@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <string>
 
 namespace dpp {
 class cluster;
@@ -14,7 +16,8 @@ class cluster;
 // ready again or it runs out of attempts.
 // The leave and the join are separate phases because dpp erases the guild's
 // voiceconn when Discord confirms the leave - a join sent earlier dies with it.
-class VoiceRejoiner
+// Held by a shared_ptr: the leave timeout runs on a dpp timer thread.
+class VoiceRejoiner : public std::enable_shared_from_this<VoiceRejoiner>
 {
 public:
     explicit VoiceRejoiner(dpp::cluster &bot_);
@@ -38,7 +41,14 @@ public:
 
 private:
     void leave(uint64_t guildId, uint64_t channelId);
-    void join(uint64_t guildId, uint64_t channelId);
+    void join(uint64_t guildId, uint64_t channelId, const std::string &why);
+    void armLeaveTimeout(uint64_t guildId, int attempt);
+    void onLeaveTimeout(uint64_t guildId, int attempt);
+
+    // The confirmation and the timeout race for the join; this lets the first
+    // one through and leaves the other nothing to do. Returns the channel to
+    // join, or 0. attempt 0 matches any, otherwise only that attempt's timer.
+    uint64_t takeWaitForLeave(uint64_t guildId, int attempt);
 
     dpp::cluster &bot;
     std::mutex mutex;
@@ -51,5 +61,6 @@ private:
     std::map<uint64_t, Pending> pending; // one guild in practice; the map keeps it honest
 
     static constexpr int64_t RETRY_AFTER_SECONDS = 30;
+    static constexpr uint64_t LEAVE_CONFIRM_SECONDS = 5;
     static constexpr int MAX_ATTEMPTS = 5;
 };
