@@ -48,6 +48,10 @@ void CommandHandler::setBot(std::shared_ptr<dpp::cluster> bot_)
 void CommandHandler::prepare()
 {
     playback = std::make_shared<PlaybackController>();
+    // A command takes it, so it has to exist before the commands are built.
+    if (bot) {
+        rejoiner = std::make_shared<VoiceRejoiner>(*bot);
+    }
 
     setupCommands();
     setupBot();
@@ -59,7 +63,7 @@ void CommandHandler::setupCommands()
     add<JoinCommand>(playback);
     add<PlayCommand>(playback);
     add<StopCommand>(playback);
-    add<LeaveCommand>(playback);
+    add<LeaveCommand>(playback, rejoiner);
     add<SkipCommand>(playback);
     add<QueueCommand>(playback);
     add<PauseCommand>(playback);
@@ -77,8 +81,6 @@ void CommandHandler::setupBot()
         qDebug() << "Incorrect bot ptr";
         return;
     }
-
-    rejoiner = std::make_shared<VoiceRejoiner>(*bot);
 
     // A voice session dpp can't recover is replaced by a fresh one.
     playback->setVoiceLostHandler([rejoiner = rejoiner](uint64_t guildId, uint64_t channelId) {

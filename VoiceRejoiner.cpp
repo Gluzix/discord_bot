@@ -47,6 +47,18 @@ void VoiceRejoiner::onBotLeft(uint64_t guildId)
     join(guildId, channelId);
 }
 
+void VoiceRejoiner::cancel(uint64_t guildId)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (pending.erase(guildId) == 0) {
+            return;
+        }
+    }
+    bot.log(dpp::ll_warning, "Voice rejoin for guild " + std::to_string(guildId)
+                             + " cancelled: the bot was asked to leave");
+}
+
 void VoiceRejoiner::onVoiceReady(uint64_t guildId)
 {
     std::lock_guard<std::mutex> lock(mutex);
