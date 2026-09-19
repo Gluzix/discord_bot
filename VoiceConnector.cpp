@@ -26,7 +26,7 @@ VoiceConnector::Result VoiceConnector::ensureJoined(const dpp::slashcommand_t &e
         }
     }
 
-    if (!guild->connect_member_voice(*event.owner, event.command.get_issuing_user().id)) {
+    if (!guild->connect_member_voice(*event.owner, event.command.get_issuing_user().id, voice::SELF_MUTE, voice::SELF_DEAF)) {
         return Result::UserNotInVoice;
     }
     return Result::Joined;

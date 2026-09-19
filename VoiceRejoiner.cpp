@@ -1,4 +1,5 @@
 #include "VoiceRejoiner.h"
+#include "VoiceConnector.h"
 
 #include <dpp/dpp.h>
 
@@ -179,5 +180,5 @@ void VoiceRejoiner::join(uint64_t guildId, uint64_t channelId, const std::string
 
     bot.log(dpp::ll_warning, "Voice rejoin: " + why + ", rejoining channel "
                              + std::to_string(channelId) + " in guild " + std::to_string(guildId));
-    shard->connect_voice(guildId, channelId);
+    shard->connect_voice(guildId, channelId, voice::SELF_MUTE, voice::SELF_DEAF);
 }

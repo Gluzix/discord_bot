@@ -6,6 +6,13 @@ struct slashcommand_t;
 
 class PlaybackController;
 
+// The bot never listens, so it joins deafened - Discord then sends it nobody's
+// audio. Both join paths share these so a rejoin can't un-deafen it.
+namespace voice {
+inline constexpr bool SELF_MUTE = false;
+inline constexpr bool SELF_DEAF = true;
+}
+
 // Voice-channel join logic shared by /join and /play - extracted so that
 // PlayCommand no longer has to inherit from JoinCommand just to reuse it.
 // Pure logic, no replies: each command decides how to talk about the result.
