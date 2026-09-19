@@ -23,6 +23,7 @@ Built on [D++ (DPP)](https://dpp.dev) for Discord, FFmpeg for decoding, [yt-dlp]
 A few behaviours worth knowing:
 
 - **The audience is in charge.** Once the bot is playing for people, only users in its voice channel can control it or call it to another channel. An idle bot follows anyone.
+- **It never listens.** The bot joins deafened, so Discord sends it nobody's audio.
 - **It leaves when unused.** After five minutes with nothing playing and an empty queue, the bot leaves the voice channel.
 - **Long sessions are fine.** Queued songs are resolved a few ahead of time so transitions are gapless, and a looping song re-resolves itself before its stream URL expires.
 - **Ctrl+C is graceful.** The bot shuts down its threads and disconnects cleanly.
