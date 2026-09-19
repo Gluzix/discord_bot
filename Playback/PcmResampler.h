@@ -22,6 +22,7 @@ class PcmResampler
 {
 public:
     enum class Result { Ok, OpenFailed, ReadFailed, NoAudio };
+    enum class RunEnd { EndOfStream, ReadError, Stopped };
     using PacketSink = std::function<void(std::vector<uint8_t>)>;
 
     // Reports the ticket of the seek that was just applied, so the caller can
@@ -38,11 +39,11 @@ public:
     // read until run(). Everything allocated here is freed by the destructor.
     Result open(const std::string &directUrl);
 
-    // Runs until the stream ends or keepGoing() turns false. Every packet is
-    // exactly packetBytes; only the last may be shorter. Restartable: after
-    // it returned at end of stream, a new run() honours a seek requested
-    // meanwhile and decodes again.
-    void run(const PacketSink &sink, const std::function<bool()> &keepGoing, const SeekDone &onSeeked);
+    // Runs until the stream ends or keepGoing() turns false, and says which.
+    // Every packet is exactly packetBytes; only the last may be shorter.
+    // Restartable: after it returned at end of stream, a new run() honours a
+    // seek requested meanwhile and decodes again.
+    RunEnd run(const PacketSink &sink, const std::function<bool()> &keepGoing, const SeekDone &onSeeked);
 
     // Asks run() to jump to `seconds`; callable from any thread, and also
     // while run() is not running (the next run() starts there). A newer

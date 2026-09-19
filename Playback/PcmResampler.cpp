@@ -11,6 +11,7 @@
 
 extern "C" {
 #include <libavutil/dict.h>
+#include <libavutil/error.h>
 #include <libavutil/frame.h>
 #include <libavutil/mem.h>
 #include <libavutil/rational.h>
@@ -156,14 +157,14 @@ bool PcmResampler::frameEndsBy(const AVFrame *frame, double seconds) const
     return end <= seconds;
 }
 
-void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keepGoing, const SeekDone &onSeeked)
+PcmResampler::RunEnd PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keepGoing, const SeekDone &onSeeked)
 {
     Q_ASSERT(sink && keepGoing); // callers must wire both
     if (!sink || !keepGoing) {
-        return;
+        return RunEnd::Stopped;
     }
     if (!keepGoing()) {
-        return; // skip or stop landed between open() and run()
+        return RunEnd::Stopped; // skip or stop landed between open() and run()
     }
 
     AVPacket *packet = av_packet_alloc();
@@ -229,6 +230,8 @@ void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keep
         }
     };
 
+    RunEnd end = RunEnd::Stopped;
+
     while (keepGoing()) {
         applyPendingSeek();
 
@@ -237,7 +240,10 @@ void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keep
         auto t1 = std::chrono::steady_clock::now();
         readTime += (t1 - t0);
 
-        if (ret < 0) break;
+        if (ret < 0) {
+            end = ret == AVERROR_EOF ? RunEnd::EndOfStream : RunEnd::ReadError;
+            break;
+        }
 
         if (packet->stream_index != audioStream) {
             av_packet_unref(packet);
@@ -280,4 +286,5 @@ void PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keep
 
     av_packet_free(&packet);
     av_frame_free(&frame);
+    return end;
 }
