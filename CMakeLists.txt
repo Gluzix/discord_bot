@@ -64,6 +64,7 @@ add_executable(discord_bot
   Playback/ResolverWorker.h Playback/ResolverWorker.cpp
   Playback/SongPlayer.h Playback/SongPlayer.cpp
   Playback/VoiceDrainWatchdog.h Playback/VoiceDrainWatchdog.cpp
+  Playback/FailureStreak.h Playback/FailureStreak.cpp
   Playback/Song.h
   Playback/ChunkedSource.h Playback/ChunkedSource.cpp
 )
