@@ -296,7 +296,10 @@ void SongPlayer::decode(Song &song)
     };
     auto fail = [&](const char *msg) {
         currentSongFailed = true;
-        notifyUser(dpp::message(msg));
+        // A held song's retries are quiet - the notice went out once.
+        if (song.failedAttempts == 0) {
+            notifyUser(dpp::message(msg));
+        }
     };
 
     // googlevideo urls are ip-bound and expire after a few hours; use the
