@@ -115,10 +115,9 @@ size_t PlaybackController::skip(size_t count)
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         if (!songInProgress) {
-            // A song waiting out its retry pause is the current one: skipping
-            // it drops it and lifts the wait. The streak is not affected.
-            const bool holding = !songQueue.empty()
-                                 && std::chrono::steady_clock::now() < retryNotBefore;
+            // A held song at the front is the current one: skipping it drops
+            // it and lifts the wait. The streak is not affected.
+            const bool holding = !songQueue.empty() && songQueue.front().failedAttempts > 0;
             if (!holding) {
                 return 0;
             }
@@ -352,7 +351,7 @@ void PlaybackController::playbackWorker()
                 if (!songReady()) {
                     stateCv.wait(lock);
                 } else if (std::chrono::steady_clock::now() < retryNotBefore) {
-                    stateCv.wait_until(lock, retryNotBefore); // a held song waits out its pause
+                    stateCv.wait_until(lock, retryNotBefore);
                 } else {
                     break;
                 }
@@ -427,6 +426,8 @@ void PlaybackController::playbackWorker()
                 } else if (song.failedAttempts > 0) {
                     qWarning().noquote() << "Giving up on" << QString::fromStdString(label) << "after"
                                          << song.failedAttempts << "retries";
+                } else {
+                    qWarning().noquote() << "Dropping" << QString::fromStdString(label) << "- it failed";
                 }
             } else if (sessionAlive && loopMode == LoopMode::Song && endedNaturally) {
                 // Repeat-one: back to the front, quietly.
@@ -450,7 +451,7 @@ void PlaybackController::playbackWorker()
         // Never under stateMutex. The local song still owns its event - the
         // retry pushed above got a copy.
         if (announceHold) {
-            dpp::message notice(messages::retryingAfterFailures);
+            dpp::message notice(messages::retryingSong);
             notice.channel_id = song.event->command.channel_id;
             song.event->owner->message_create(notice);
         }
