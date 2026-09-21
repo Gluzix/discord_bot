@@ -67,6 +67,7 @@ add_executable(discord_bot
   Playback/FailureStreak.h Playback/FailureStreak.cpp
   Playback/Song.h
   Playback/ChunkedSource.h Playback/ChunkedSource.cpp
+  Playback/PcmBuffer.h Playback/PcmBuffer.cpp
 )
 
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}")
