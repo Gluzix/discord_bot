@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Song.h"
+#include "PcmBuffer.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -71,7 +72,6 @@ private:
 
     std::function<void(std::string)> onLabelResolved;
 
-    std::atomic<bool> isPlaying{false};
     std::thread senderThread;
     std::thread decoderThread;
 
@@ -93,8 +93,6 @@ private:
     bool flushClient = false;     // asks the sender to drop dpp's send buffer
     PcmResampler *activeResampler = nullptr; // only while the decoder has one open
     double durationSeconds = 0;   // 0 = the container didn't say
-    std::mutex queueMutex;
-    std::condition_variable queueCv;
     bool decodingFinished = false;
 
     // Written by the decoder thread, read by play() after it joins - the join
@@ -103,4 +101,6 @@ private:
 
     // Same, for the sender thread.
     bool voiceLost = false;
+
+    PcmBuffer pcmBuffer;
 };
