@@ -1,12 +1,17 @@
-# Claude reviews each pull request. Needs the CLAUDE_CODE_OAUTH_TOKEN repo
-# secret (from `claude setup-token`) and the Claude GitHub App installed.
-# Model is pinned on the --model line; add "synchronize" below to also
-# re-review every push to an open PR (costs a run each time).
+# Claude reviews each pull request: the whole diff when it is opened, then
+# only the newly pushed commits on every push to it (one run each time).
+# Needs the CLAUDE_CODE_OAUTH_TOKEN repo secret (from `claude setup-token`)
+# and the Claude GitHub App installed. Model is pinned on the --model line.
 name: Claude Review
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review]
+    types: [opened, reopened, ready_for_review, synchronize]
+
+# A newer push makes a still-running review of the same PR pointless.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   review:
@@ -19,17 +24,38 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      # A push to an open PR is reviewed on its own. After a force-push the
+      # old head is no ancestor of the new one: review the whole PR again.
+      - name: Pick what to review
+        id: scope
+        env:
+          ACTION: ${{ github.event.action }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$ACTION" = "synchronize" ] \
+             && git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+             && git merge-base --is-ancestor "$BEFORE" "$AFTER"; then
+            echo "what=only the commits pushed just now, $BEFORE..$AFTER (everything before them was reviewed already)" >> "$GITHUB_OUTPUT"
+            echo "diff=git diff $BEFORE..$AFTER" >> "$GITHUB_OUTPUT"
+          else
+            echo "what=the whole pull request" >> "$GITHUB_OUTPUT"
+            echo "diff=gh pr diff $PR" >> "$GITHUB_OUTPUT"
+          fi
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           show_full_output: true
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
-            1. Run: gh pr diff ${{ github.event.pull_request.number }}
-            2. Review the diff for real bugs, correctness, thread-safety, and clarity. Skip pure style nits.
+            Review ${{ steps.scope.outputs.what }}.
+            1. Run: ${{ steps.scope.outputs.diff }}
+            2. Review that diff for real bugs, correctness, thread-safety, and clarity. Skip pure style nits.
             3. Post your review as ONE comment by running:
                gh pr comment ${{ github.event.pull_request.number }} --body "YOUR REVIEW"
+               Start the comment with one line saying what you reviewed: the whole PR, or which commits.
             Keep it concise and specific, cite files and lines. If nothing is seriously wrong, say so briefly.
           claude_args: |
-            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Grep"
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git diff:*),Bash(git log:*),Read,Grep"
             --model claude-haiku-4-5-20251001
