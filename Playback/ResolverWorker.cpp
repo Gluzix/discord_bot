@@ -98,8 +98,9 @@ void ResolverWorker::run()
                     song.webpageUrl = media.webpageUrl;
                     song.directUrl = media.directUrl;
                     song.resolvedAtSeconds = static_cast<int64_t>(time(nullptr));
-                    // Playlist entries share one reply, the summary - leave it be.
-                    if (!song.fromPlaylist) {
+                    // Playlist entries share one reply, the summary - leave it
+                    // be, and a held song's retries stay quiet.
+                    if (!song.fromPlaylist && song.failedAttempts == 0) {
                         label = labels::render(song.title, song.webpageUrl, song.target);
                         position = i + 1;
                         requestEvent = std::make_unique<dpp::slashcommand_t>(*song.event);

@@ -1,13 +1,16 @@
 #include "PlaybackController.h"
 #include "WindowsProcessRunner.h"
+#include "Messages.h"
 #include "Labels.h"
 #include "SongPlayer.h"
 #include "ResolverWorker.h"
 #include "Log.h"
 
 #include <dpp/dpp.h>
+#include <QDebug>
 
 #include <algorithm>
+#include <chrono>
 
 PlaybackController::PlaybackController()
 {
@@ -108,21 +111,48 @@ bool PlaybackController::isSongPlaying()
 size_t PlaybackController::skip(size_t count)
 {
     size_t fromQueue = 0;
+    size_t heldSkipped = 0;
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         if (!songInProgress) {
-            return 0;
-        }
-        // The current song counts as one; the rest come off the front of
-        // the queue. Queue-loop mode keeps them in the rotation.
-        fromQueue = std::min(count > 0 ? count - 1 : 0, songQueue.size());
-        if (loopMode == LoopMode::Queue) {
-            std::rotate(songQueue.begin(), songQueue.begin() + fromQueue, songQueue.end());
+            // A held song at the front is the current one: skipping it drops
+            // it and lifts the wait. The streak goes on while songs remain.
+            const bool holding = !songQueue.empty() && songQueue.front().failedAttempts > 0;
+            if (!holding) {
+                return 0;
+            }
+            heldSkipped = std::min(std::max<size_t>(count, 1), songQueue.size());
+            songQueue.front().failedAttempts = 0; // its next turn starts clean
+            if (loopMode == LoopMode::Queue) {
+                std::rotate(songQueue.begin(), songQueue.begin() + heldSkipped, songQueue.end());
+            } else {
+                songQueue.erase(songQueue.begin(), songQueue.begin() + heldSkipped);
+            }
+            retryNotBefore = {};
+            if (songQueue.empty()) {
+                // Nothing left, as after a last song: the idle clock starts
+                // and the streak is over.
+                idleSinceSeconds = static_cast<int64_t>(time(nullptr));
+                failureStreak.reset();
+            }
         } else {
-            songQueue.erase(songQueue.begin(), songQueue.begin() + fromQueue);
+            // The current song counts as one; the rest come off the front of
+            // the queue. Queue-loop mode keeps them in the rotation.
+            fromQueue = std::min(count > 0 ? count - 1 : 0, songQueue.size());
+            if (loopMode == LoopMode::Queue) {
+                std::rotate(songQueue.begin(), songQueue.begin() + fromQueue, songQueue.end());
+            } else {
+                songQueue.erase(songQueue.begin(), songQueue.begin() + fromQueue);
+            }
+            // Song-mode looping must not resurrect a song the user just skipped.
+            skipRequested = true;
         }
-        // Song-mode looping must not resurrect a song the user just skipped.
-        skipRequested = true;
+    }
+
+    if (heldSkipped > 0) {
+        // Nothing to stop - only the worker's wait to cut short.
+        stateCv.notify_all();
+        return heldSkipped;
     }
 
     // Ending the current song is enough - the worker advances to the next
@@ -143,6 +173,8 @@ void PlaybackController::stop()
         activeChannelId = 0;
         loopMode = LoopMode::Off;
         skipRequested = false;
+        retryNotBefore = {};
+        failureStreak.reset();
         // The bot may well still sit in the channel - the idle clock starts.
         idleSinceSeconds = static_cast<int64_t>(time(nullptr));
     }
@@ -301,6 +333,10 @@ void PlaybackController::playbackWorker()
 {
     logging::nameThisThread("worker");
 
+    // Long enough for a network outage to pass, short enough that the song
+    // comes back on its own.
+    const std::chrono::seconds RETRY_AFTER(30);
+
     while (running) {
         Song song;
         dpp::discord_voice_client *voiceClient = nullptr;
@@ -312,10 +348,20 @@ void PlaybackController::playbackWorker()
             std::unique_lock<std::mutex> lock(stateMutex);
             // A front song the resolver is still on is left to it - popping
             // it now would only resolve it a second time.
-            stateCv.wait(lock, [this] {
-                return !running || (!songQueue.empty() && currentVoiceClient != nullptr
-                                    && !songQueue.front().resolveInFlight);
-            });
+            auto songReady = [this] {
+                return !songQueue.empty() && currentVoiceClient != nullptr
+                       && !songQueue.front().resolveInFlight;
+            };
+            // Every wake re-checks running, so shutdown still gets out at once.
+            while (running) {
+                if (!songReady()) {
+                    stateCv.wait(lock);
+                } else if (std::chrono::steady_clock::now() < retryNotBefore) {
+                    stateCv.wait_until(lock, retryNotBefore);
+                } else {
+                    break;
+                }
+            }
             if (!running) {
                 break;
             }
@@ -343,11 +389,19 @@ void PlaybackController::playbackWorker()
         std::function<void(uint64_t, uint64_t)> reportVoiceLost;
         uint64_t lostGuildId = 0;
         uint64_t lostChannelId = 0;
+        bool announceHold = false;
         {
             std::lock_guard<std::mutex> lock(stateMutex);
 
             bool endedNaturally = !skipRequested && ok;
             bool sessionAlive = running && currentVoiceClient != nullptr;
+            // A skip can land right after the decoder gave up, and a skipped
+            // song is never held.
+            const bool failed = outcome == SongPlayer::Outcome::Failed && !skipRequested;
+            if (!failed) {
+                failureStreak.reset();
+            }
+
             if (outcome == SongPlayer::Outcome::VoiceLost) {
                 if (sessionAlive) {
                     // Back to the front, announced again when it resumes.
@@ -360,6 +414,26 @@ void PlaybackController::playbackWorker()
                     reportVoiceLost = voiceLostHandler;
                     lostGuildId = songGuildId;
                     lostChannelId = songChannelId;
+                }
+            } else if (failed && sessionAlive) {
+                const std::string label = song.title.empty() ? song.target : song.title;
+                const FailureStreak::Decision decision = failureStreak.recordFailure(song.failedAttempts);
+                if (decision.retry) {
+                    Song retry = makeReplay(song, false);
+                    retry.failedAttempts = song.failedAttempts + 1;
+                    retry.directUrl.clear(); // the url may be what failed
+                    retry.resolvedAtSeconds = 0;
+                    qWarning().noquote() << "Failure" << failureStreak.length() << "in a row - holding"
+                                         << QString::fromStdString(label) << "for retry"
+                                         << retry.failedAttempts << "of" << MAX_RETRIES_PER_SONG;
+                    songQueue.push_front(std::move(retry));
+                    retryNotBefore = std::chrono::steady_clock::now() + RETRY_AFTER;
+                    announceHold = decision.firstOfStreak;
+                } else if (song.failedAttempts > 0) {
+                    qWarning().noquote() << "Giving up on" << QString::fromStdString(label) << "after"
+                                         << song.failedAttempts << "retries";
+                } else {
+                    qWarning().noquote() << "Dropping" << QString::fromStdString(label) << "- it failed";
                 }
             } else if (sessionAlive && loopMode == LoopMode::Song && endedNaturally) {
                 // Repeat-one: back to the front, quietly.
@@ -374,10 +448,19 @@ void PlaybackController::playbackWorker()
             currentSongLabel.clear();
             if (songQueue.empty()) {
                 idleSinceSeconds = static_cast<int64_t>(time(nullptr));
+                failureStreak.reset(); // failures far apart must not add up
             }
         }
         // stop() may be waiting for the song threads to be fully joined.
         stateCv.notify_all();
+
+        // Never under stateMutex. The local song still owns its event - the
+        // retry pushed above got a copy.
+        if (announceHold) {
+            dpp::message notice(messages::retryingSong);
+            notice.channel_id = song.event->command.channel_id;
+            song.event->owner->message_create(notice);
+        }
 
         if (reportVoiceLost) {
             reportVoiceLost(lostGuildId, lostChannelId);

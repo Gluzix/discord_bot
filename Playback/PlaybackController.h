@@ -1,8 +1,10 @@
 #pragma once
 
+#include "FailureStreak.h"
 #include "Song.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -151,6 +153,12 @@ private:
     LoopMode loopMode{LoopMode::Off};
     bool skipRequested{false}; // song-mode: a skipped song must not requeue itself
     std::string currentSongLabel; // pre-rendered markdown for /queue
+    // A lone failure is a broken song; failures back to back are a broken
+    // network, and then the song is worth keeping.
+    static constexpr int HOLD_FROM_FAILURE = 2;
+    static constexpr int MAX_RETRIES_PER_SONG = 5;
+    FailureStreak failureStreak{HOLD_FROM_FAILURE, MAX_RETRIES_PER_SONG};
+    std::chrono::steady_clock::time_point retryNotBefore{}; // the epoch means no song is held
     std::function<void(uint64_t, uint64_t)> voiceLostHandler;
     uint64_t nextSongId{1};
     std::atomic<bool> running{true};
