@@ -116,7 +116,7 @@ size_t PlaybackController::skip(size_t count)
         std::lock_guard<std::mutex> lock(stateMutex);
         if (!songInProgress) {
             // A held song at the front is the current one: skipping it drops
-            // it and lifts the wait. The streak is not affected.
+            // it and lifts the wait. The streak goes on while songs remain.
             const bool holding = !songQueue.empty() && songQueue.front().failedAttempts > 0;
             if (!holding) {
                 return 0;
@@ -129,6 +129,12 @@ size_t PlaybackController::skip(size_t count)
                 songQueue.erase(songQueue.begin(), songQueue.begin() + heldSkipped);
             }
             retryNotBefore = {};
+            if (songQueue.empty()) {
+                // Nothing left, as after a last song: the idle clock starts
+                // and the streak is over.
+                idleSinceSeconds = static_cast<int64_t>(time(nullptr));
+                failureStreak.reset();
+            }
         } else {
             // The current song counts as one; the rest come off the front of
             // the queue. Queue-loop mode keeps them in the rotation.
