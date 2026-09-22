@@ -113,6 +113,12 @@ public:
     // only has to get a working connection. Set it before playback starts.
     void setVoiceLostHandler(std::function<void(uint64_t guildId, uint64_t channelId)> handler);
 
+    // Asked before every song which voice client the shard holds for the
+    // guild right now (nullptr when none is ready): dpp may have replaced
+    // ours while nothing was playing. Set it before playback starts.
+    using VoiceClientLookup = std::function<dpp::discord_voice_client *(uint64_t guildId)>;
+    void setVoiceClientLookup(VoiceClientLookup lookup);
+
     // Called by the bot's on_voice_ready handler once a voice connection
     // can accept audio.
     void onVoiceReady(const dpp::voice_ready_t &event);
@@ -160,6 +166,7 @@ private:
     FailureStreak failureStreak{HOLD_FROM_FAILURE, MAX_RETRIES_PER_SONG};
     std::chrono::steady_clock::time_point retryNotBefore{}; // the epoch means no song is held
     std::function<void(uint64_t, uint64_t)> voiceLostHandler;
+    VoiceClientLookup voiceClientLookup;
     uint64_t nextSongId{1};
     std::atomic<bool> running{true};
     std::thread workerThread;

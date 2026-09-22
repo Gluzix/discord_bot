@@ -268,6 +268,12 @@ void PlaybackController::setVoiceLostHandler(std::function<void(uint64_t, uint64
     voiceLostHandler = std::move(handler);
 }
 
+void PlaybackController::setVoiceClientLookup(VoiceClientLookup lookup)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    voiceClientLookup = std::move(lookup);
+}
+
 void PlaybackController::onVoiceReady(const dpp::voice_ready_t &event)
 {
     {
@@ -364,6 +370,20 @@ void PlaybackController::playbackWorker()
             }
             if (!running) {
                 break;
+            }
+            // dpp may have destroyed and replaced the client while nothing
+            // was playing - only the shard knows which one is live now.
+            if (voiceClientLookup) {
+                dpp::discord_voice_client *live = voiceClientLookup(activeGuildId);
+                if (live != currentVoiceClient) {
+                    currentVoiceClient = live;
+                    if (live == nullptr) {
+                        qWarning() << "Voice client is gone - holding the queue until a new session is ready";
+                        continue; // back to waiting; onVoiceReady provides the next client
+                    }
+                    qWarning() << "Voice client was replaced under us - adopting the live one";
+                    activeChannelId = static_cast<uint64_t>(live->channel_id);
+                }
             }
             song = std::move(songQueue.front());
             songQueue.pop_front();
