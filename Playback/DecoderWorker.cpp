@@ -122,6 +122,8 @@ void DecoderWorker::run()
         return;
     }
 
+    qDebug().noquote() << "Playing" << QString::fromStdString(media.title) << "-" << QString::fromStdString(media.webpageUrl);
+
     // The title is untrusted input from the video page - disable every kind
     // of mention so a title like "@everyone" can't ping the server. Rendered
     // as a masked link: clickable title, no embed preview. Song-mode loop
