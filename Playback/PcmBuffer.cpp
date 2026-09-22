@@ -90,6 +90,46 @@ bool PcmBuffer::cutShort() const
     return !(decodingFinished && audioQueue.empty());
 }
 
+PcmBuffer::Next PcmBuffer::next()
+{
+    std::unique_lock<std::mutex> lock(queueMutex);
+    queueCv.wait(lock, [this] {
+        return !audioQueue.empty() || decodingFinished || flushClient || !isPlaying;
+    });
+    if (!isPlaying) {
+        return Next{Next::Kind::Stopped, {}};
+    }
+    if (flushClient) {
+        flushClient = false;
+        return Next{Next::Kind::Flush, {}};
+    }
+    if (audioQueue.empty()) { // so decoding is finished: nothing more is coming
+        songEnding = true;    // nothing left to seek in
+        return Next{Next::Kind::Ended, {}};
+    }
+    Next taken{Next::Kind::Packet, std::move(audioQueue.front())};
+    audioQueue.pop();
+    queuedBytes -= taken.packet.size();
+    playedBytes += taken.packet.size();
+    lock.unlock();
+    queueCv.notify_one(); // room for the decoder
+    return taken;
+}
+
+bool PcmBuffer::takeFlushRequest()
+{
+    std::lock_guard<std::mutex> lock(queueMutex);
+    const bool wanted = flushClient;
+    flushClient = false;
+    return wanted;
+}
+
+void PcmBuffer::pacingWait(std::chrono::milliseconds timeout)
+{
+    std::unique_lock<std::mutex> lock(queueMutex);
+    queueCv.wait_for(lock, timeout, [this] { return !isPlaying || flushClient; });
+}
+
 std::mutex &PcmBuffer::mutex()
 {
     return queueMutex;

@@ -143,14 +143,7 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
     const std::chrono::seconds VOICE_DEAD_AFTER(10);
     VoiceDrainWatchdog watchdog(VOICE_DEAD_AFTER);
 
-    // A seek asks for dpp's ~1s tail to go, so the jump is audible at once.
     // This thread owns the client, so it is the one that may flush it.
-    auto takeFlushRequest = [this] {
-        std::lock_guard<std::mutex> lock(pcmBuffer.mutex());
-        const bool wanted = pcmBuffer.flushClient;
-        pcmBuffer.flushClient = false;
-        return wanted;
-    };
     auto flushClientNow = [&] {
         // dpp sets terminating at least 100ms before it destroys the client.
         if (voiceClient->terminating) {
@@ -165,34 +158,17 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
     // The decoder fills the queue with ready-to-send packets of exactly
     // dpp::send_audio_raw_max_length bytes; only the final one may be shorter.
     while (pcmBuffer.running()) {
-        std::vector<uint8_t> packet;
-        bool flushNow = false;
-        {
-            std::unique_lock<std::mutex> lock(pcmBuffer.mutex());
-            pcmBuffer.cv().wait(lock, [this] {
-                return !pcmBuffer.audioQueue.empty() || pcmBuffer.decodingFinished || pcmBuffer.flushClient || !pcmBuffer.running();
-            });
-            if (pcmBuffer.flushClient) {
-                pcmBuffer.flushClient = false;
-                flushNow = true;
-            } else if (pcmBuffer.audioQueue.empty()) {
-                if (pcmBuffer.decodingFinished) {
-                    pcmBuffer.songEnding = true; // nothing left to seek in
-                    break;
-                }
-                continue;
-            } else {
-                packet = std::move(pcmBuffer.audioQueue.front());
-                pcmBuffer.audioQueue.pop();
-                pcmBuffer.queuedBytes -= packet.size();
-                pcmBuffer.playedBytes += packet.size();
-            }
+        PcmBuffer::Next taken = pcmBuffer.next();
+        if (taken.kind == PcmBuffer::Next::Kind::Stopped || taken.kind == PcmBuffer::Next::Kind::Ended) {
+            break;
         }
-        if (flushNow) {
+        if (taken.kind == PcmBuffer::Next::Kind::Flush) {
             if (!flushClientNow()) break;
             continue;
         }
-        pcmBuffer.cv().notify_one(); // room for the decoder
+
+        std::vector<uint8_t> packet = std::move(taken.packet);
+        bool flushNow = false;
 
         // Never call into dpp while holding the buffer's mutex - a foreign lock
         // inside our critical section is how the whole pipeline wedges.
@@ -206,7 +182,7 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
                 voiceLost = true;
                 break;
             }
-            if (takeFlushRequest()) {
+            if (pcmBuffer.takeFlushRequest()) {
                 flushNow = true;
                 break;
             }
@@ -214,10 +190,7 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
                 break;
             }
 
-            std::unique_lock<std::mutex> lock(pcmBuffer.mutex());
-            pcmBuffer.cv().wait_for(lock, std::chrono::milliseconds(100), [this] {
-                return !pcmBuffer.running() || pcmBuffer.flushClient;
-            });
+            pcmBuffer.pacingWait(std::chrono::milliseconds(100));
         }
         if (voiceLost) {
             stop(); // a decoder waiting on a full queue has nobody else to wake it

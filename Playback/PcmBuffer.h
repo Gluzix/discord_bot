@@ -3,6 +3,7 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <queue>
@@ -34,6 +35,21 @@ public:
 
     // Leftover audio means the song was cut short (skip/stop).
     bool cutShort() const;
+
+    struct Next
+    {
+        enum class Kind { Packet, Flush, Ended, Stopped } kind;
+        std::vector<uint8_t> packet; // only for Kind::Packet
+    };
+
+    // Blocks until there is something for the sender to do.
+    Next next();
+
+    // A seek asks for dpp's ~1s tail to go, so the jump is audible at once.
+    bool takeFlushRequest();
+
+    // Returns early on a stop or a flush request.
+    void pacingWait(std::chrono::milliseconds timeout);
 
     // TODO: To Be removed in future refactor
     std::mutex &mutex();
