@@ -6,15 +6,13 @@
 #include <functional>
 #include <optional>
 #include <string>
-#include <thread>
 
 namespace dpp {
 class discord_voice_client;
 }
 
-// The Discord-facing pipeline for one song at a time: resolve (when the
-// prefetch is stale), announce, decode via PcmResampler, and pace PCM packets
-// to the voice client. Owns a decoder and a sender thread per song. Knows
+// Commands one song: its lifecycle, its outcome and the seek API. A
+// DecoderWorker and a SenderWorker do the work, sharing a PcmBuffer. Knows
 // nothing about the queue or loop policy - that stays in PlaybackController.
 class SongPlayer
 {
