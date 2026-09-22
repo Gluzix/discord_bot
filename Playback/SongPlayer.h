@@ -51,20 +51,15 @@ public:
     std::optional<Position> seekTo(int seconds);
 
 private:
-    void streamAudio(dpp::discord_voice_client *voiceClient);
     void decode(Song &song);
 
     std::function<void(std::string)> onLabelResolved;
 
-    std::thread senderThread;
     std::thread decoderThread;
 
     // Written by the decoder thread, read by play() after it joins - the join
     // is the synchronisation point, so no lock is needed.
     bool currentSongFailed = false;
-
-    // Same, for the sender thread.
-    bool voiceLost = false;
 
     PcmBuffer pcmBuffer;
 };
