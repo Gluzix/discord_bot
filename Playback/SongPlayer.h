@@ -51,15 +51,7 @@ public:
     std::optional<Position> seekTo(int seconds);
 
 private:
-    void decode(Song &song);
-
     std::function<void(std::string)> onLabelResolved;
-
-    std::thread decoderThread;
-
-    // Written by the decoder thread, read by play() after it joins - the join
-    // is the synchronisation point, so no lock is needed.
-    bool currentSongFailed = false;
 
     PcmBuffer pcmBuffer;
 };

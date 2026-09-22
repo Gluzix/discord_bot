@@ -1,15 +1,8 @@
 #include "SongPlayer.h"
+#include "DecoderWorker.h"
 #include "SenderWorker.h"
-#include "PcmResampler.h"
-#include "WindowsProcessRunner.h"
-#include "Messages.h"
-#include "Labels.h"
-#include "Log.h"
 
 #include <dpp/dpp.h>
-#include <QDebug>
-
-#include <ctime>
 
 SongPlayer::SongPlayer(std::function<void(std::string)> onLabelResolved_)
     : onLabelResolved(std::move(onLabelResolved_))
@@ -24,9 +17,8 @@ void SongPlayer::arm()
 SongPlayer::Outcome SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
 {
     pcmBuffer.reset();
-    currentSongFailed = false;
 
-    decoderThread = std::thread(&SongPlayer::decode, this, std::ref(song));
+    DecoderWorker decoder(pcmBuffer, song, onLabelResolved);
     SenderWorker sender(pcmBuffer, voiceClient);
 
     // Sender first: once it is joined, this thread is the only one on the
@@ -38,7 +30,7 @@ SongPlayer::Outcome SongPlayer::play(dpp::discord_voice_client *voiceClient, Son
     // dpp may already have destroyed the client it gave up on - not one
     // call more, not even is_paused().
     if (sender.voiceLost()) {
-        decoderThread.join();
+        decoder.join();
         return Outcome::VoiceLost;
     }
 
@@ -52,8 +44,8 @@ SongPlayer::Outcome SongPlayer::play(dpp::discord_voice_client *voiceClient, Son
         voiceClient->pause_audio(false);
     }
 
-    decoderThread.join();
-    return currentSongFailed ? Outcome::Failed : Outcome::Finished;
+    decoder.join();
+    return decoder.failed() ? Outcome::Failed : Outcome::Finished;
 }
 
 void SongPlayer::stop()
@@ -69,141 +61,4 @@ std::optional<SongPlayer::Position> SongPlayer::seekBy(int deltaSeconds)
 std::optional<SongPlayer::Position> SongPlayer::seekTo(int seconds)
 {
     return pcmBuffer.seek(seconds, false);
-}
-
-void SongPlayer::decode(Song &song)
-{
-    logging::nameThisThread("decoder");
-
-    // Whatever happens here, the sender waits on the queue and must be
-    // released - every exit path has to mark decoding as finished.
-    struct FinishGuard { std::function<void()> done; ~FinishGuard() { if (done) done(); } };
-    FinishGuard finish{[this] { pcmBuffer.markFinished(); }};
-
-    // Stopped between arm() and here - don't even launch yt-dlp.
-    if (!pcmBuffer.running()) {
-        return;
-    }
-
-    // A queued song announces itself in a fresh channel message, leaving its
-    // "Queued at position N" reply intact as history (also immune to the
-    // 15-minute interaction token limit). An immediate song still morphs its
-    // "Looking for your song..." placeholder.
-    const bool announceInNewMessage = song.wasQueued;
-    dpp::slashcommand_t &event = *song.event;
-    auto notifyUser = [&event, announceInNewMessage](dpp::message msg) {
-        if (announceInNewMessage) {
-            msg.channel_id = event.command.channel_id;
-            event.owner->message_create(msg);
-        } else {
-            event.edit_original_response(msg);
-        }
-    };
-    auto fail = [&](const char *msg) {
-        currentSongFailed = true;
-        // A held song's retries are quiet - the notice went out once.
-        if (song.failedAttempts == 0) {
-            notifyUser(dpp::message(msg));
-        }
-    };
-
-    // googlevideo urls are ip-bound and expire after a few hours; use the
-    // resolver's prefetch only while it's still fresh.
-    const int64_t FRESH_FOR_SECONDS = 3600;
-    bool prefetchIsFresh = !song.directUrl.empty()
-        && (static_cast<int64_t>(time(nullptr)) - song.resolvedAtSeconds) < FRESH_FOR_SECONDS;
-
-    ResolvedMedia media;
-    if (prefetchIsFresh) {
-        media.title = song.title;
-        media.webpageUrl = song.webpageUrl;
-        media.directUrl = song.directUrl;
-    } else {
-        // A skip/stop while yt-dlp runs kills it - nobody waits on a resolve
-        // nobody wants anymore.
-        media = WindowsProcessRunner::resolveMedia(song.target, [this] { return !pcmBuffer.running(); });
-        if (!media.directUrl.empty()) {
-            // Re-resolved (expired prefetch): write it back so a loop replay
-            // starts from the fresh url with no extra bookkeeping.
-            song.title = media.title;
-            song.webpageUrl = media.webpageUrl;
-            song.directUrl = media.directUrl;
-            song.resolvedAtSeconds = static_cast<int64_t>(time(nullptr));
-        }
-    }
-
-    // A cancelled resolve comes back empty too - check the skip first so it
-    // isn't reported as an error.
-    if (!pcmBuffer.running()) {
-        return;
-    }
-    if (media.directUrl.empty()) {
-        fail(messages::errorResolve);
-        return;
-    }
-
-    if (onLabelResolved) {
-        onLabelResolved(labels::render(media.title, media.webpageUrl, song.target));
-    }
-
-    PcmResampler resampler(dpp::send_audio_raw_max_length);
-    switch (resampler.open(media.directUrl)) {
-        case PcmResampler::Result::OpenFailed: fail(messages::errorOpenStream); return;
-        case PcmResampler::Result::ReadFailed: fail(messages::errorReadStream); return;
-        case PcmResampler::Result::NoAudio: fail(messages::errorNoAudio); return;
-        case PcmResampler::Result::Ok: break;
-    }
-
-    if (!pcmBuffer.running()) {
-        return;
-    }
-
-    // The title is untrusted input from the video page - disable every kind
-    // of mention so a title like "@everyone" can't ping the server. Rendered
-    // as a masked link: clickable title, no embed preview. Song-mode loop
-    // replays stay quiet - nobody needs the same title announced 20 times.
-    if (!song.isLoopReplay) {
-        dpp::message nowPlaying(messages::playingPrefix + labels::render(media.title, media.webpageUrl, song.target));
-        nowPlaying.set_allowed_mentions();
-        notifyUser(nowPlaying);
-    }
-
-    auto sink = [this](std::vector<uint8_t> pkt) {
-        pcmBuffer.push(std::move(pkt));
-    };
-
-    auto onSeeked = [this](uint64_t ticket, bool ok) {
-        pcmBuffer.seekApplied(ticket, ok);
-    };
-
-    // The duration first: it clamps a seek, and a seek is possible the moment
-    // the requester is published.
-    pcmBuffer.setDuration(resampler.durationSeconds());
-    pcmBuffer.setSeekRequester([&resampler](double seconds, uint64_t ticket) {
-        resampler.requestSeek(seconds, ticket);
-    });
-
-    // A rewind re-runs a stream that is already gone - say it once per song.
-    bool streamLostAnnounced = false;
-
-    // The decoder has to outlive end of stream: it runs a minute ahead, so
-    // otherwise the last minute of every song couldn't be rewound.
-    for (;;) {
-        const PcmResampler::RunEnd runEnd = resampler.run(sink, [this] { return pcmBuffer.running(); }, onSeeked);
-        if (runEnd == PcmResampler::RunEnd::ReadError && !streamLostAnnounced) {
-            streamLostAnnounced = true;
-            qDebug() << "The audio stream died mid-song - telling the channel";
-            // Never an edit: the "Playing:" reply stays as history.
-            dpp::message lost(messages::streamLost);
-            lost.channel_id = event.command.channel_id;
-            lost.set_allowed_mentions();
-            event.owner->message_create(lost);
-        }
-
-        if (!pcmBuffer.finishedAndWaitForRewind()) {
-            break;
-        }
-    }
-
-    pcmBuffer.clearSeekRequester(); // it must not outlive the resampler below
 }
