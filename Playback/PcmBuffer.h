@@ -6,6 +6,8 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <queue>
 #include <vector>
 
@@ -33,8 +35,28 @@ public:
 
     void setDuration(double seconds);
 
+    // Forwards a seek to whatever can serve it; called under the mutex, so it
+    // must not take one the decoder holds while it pushes.
+    using SeekRequester = std::function<void(double seconds, uint64_t ticket)>;
+    void setSeekRequester(SeekRequester requester);
+    void clearSeekRequester();
+
+    // Only the newest ticket counts.
+    void seekApplied(uint64_t ticket, bool ok);
+
     // Leftover audio means the song was cut short (skip/stop).
     bool cutShort() const;
+
+    struct Position
+    {
+        double seconds{0};
+        double durationSeconds{0}; // 0 = unknown
+    };
+
+    // The one seek path: `seconds` is added to the current position when
+    // relative, otherwise it is the target itself. nullopt when there is
+    // nothing to seek in right now.
+    std::optional<Position> seek(double seconds, bool relative);
 
     struct Next
     {
@@ -77,6 +99,7 @@ private:
     bool seekInFlight = false;    // the decoder hasn't applied it yet: its packets are stale
     uint64_t bytesBeforeSeek = 0; // to restore the position if the seek fails
     size_t droppedForSeek = 0;
+    SeekRequester seekRequester;  // set only while the decoder has a resampler open
     bool songEnding = false;      // the sender took the natural-end exit; too late to seek
     bool flushClient = false;     // asks the sender to drop dpp's send buffer
     double durationSeconds = 0;   // 0 = the container didn't say

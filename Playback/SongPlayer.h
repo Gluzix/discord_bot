@@ -14,8 +14,6 @@ namespace dpp {
 class discord_voice_client;
 }
 
-class PcmResampler;
-
 // The Discord-facing pipeline for one song at a time: resolve (when the
 // prefetch is stale), announce, decode via PcmResampler, and pace PCM packets
 // to the voice client. Owns a decoder and a sender thread per song. Knows
@@ -29,11 +27,7 @@ public:
         VoiceLost, // the client stopped taking audio; it must not be used again
     };
 
-    struct Position
-    {
-        double seconds{0};
-        double durationSeconds{0}; // 0 = unknown
-    };
+    using Position = PcmBuffer::Position;
 
     // onLabelResolved is called (from the decoder thread) with the rendered
     // "now playing" label once the song resolves, so /queue can show the title.
@@ -62,16 +56,10 @@ private:
     void streamAudio(dpp::discord_voice_client *voiceClient);
     void decode(Song &song);
 
-    // The one seek path: `seconds` is added to the current position when
-    // relative, otherwise it is the target itself.
-    std::optional<Position> seek(double seconds, bool relative);
-
     std::function<void(std::string)> onLabelResolved;
 
     std::thread senderThread;
     std::thread decoderThread;
-
-    PcmResampler *activeResampler = nullptr; // only while the decoder has one open
 
     // Written by the decoder thread, read by play() after it joins - the join
     // is the synchronisation point, so no lock is needed.

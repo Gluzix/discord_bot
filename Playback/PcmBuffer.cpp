@@ -1,5 +1,7 @@
 #include "PcmBuffer.h"
 
+#include <algorithm>
+
 void PcmBuffer::arm()
 {
     isPlaying = true;
@@ -35,6 +37,7 @@ void PcmBuffer::reset()
     songEnding = false;
     flushClient = false;
     durationSeconds = 0;
+    seekRequester = nullptr;
 }
 
 PcmBuffer::PushResult PcmBuffer::push(std::vector<uint8_t> packet)
@@ -84,10 +87,85 @@ void PcmBuffer::setDuration(double seconds)
     durationSeconds = seconds;
 }
 
+void PcmBuffer::setSeekRequester(SeekRequester requester)
+{
+    std::lock_guard<std::mutex> lock(queueMutex);
+    seekRequester = std::move(requester);
+}
+
+void PcmBuffer::clearSeekRequester()
+{
+    std::lock_guard<std::mutex> lock(queueMutex);
+    seekRequester = nullptr;
+}
+
+void PcmBuffer::seekApplied(uint64_t ticket, bool ok)
+{
+    std::unique_lock<std::mutex> lock(queueMutex);
+    if (ticket != seekTicket) {
+        return; // an older seek: a newer one is still on its way
+    }
+    seekInFlight = false;
+    if (!ok) {
+        playedBytes = bytesBeforeSeek + droppedForSeek; // the dropped queue was a forward
+    }
+    lock.unlock();
+    queueCv.notify_all();
+}
+
 bool PcmBuffer::cutShort() const
 {
     std::lock_guard<std::mutex> lock(queueMutex);
     return !(decodingFinished && audioQueue.empty());
+}
+
+std::optional<PcmBuffer::Position> PcmBuffer::seek(double seconds, bool relative)
+{
+    std::unique_lock<std::mutex> lock(queueMutex);
+    if (!isPlaying || songEnding || !seekRequester) {
+        return std::nullopt;
+    }
+
+    const double current = static_cast<double>(playedBytes) / BYTES_PER_SECOND;
+    double target = std::max(relative ? current + seconds : seconds, 0.0);
+    if (durationSeconds > 0) {
+        target = std::min(target, durationSeconds); // a target at the end just ends the song
+    }
+
+    // A forward the queue already holds needs no decoder: drop whole packets.
+    const double aheadSeconds = target - current;
+    if (!seekInFlight && aheadSeconds > 0
+        && aheadSeconds * BYTES_PER_SECOND <= static_cast<double>(queuedBytes)) {
+        const size_t aheadBytes = static_cast<size_t>(aheadSeconds * BYTES_PER_SECOND);
+        size_t dropped = 0;
+        while (!audioQueue.empty() && dropped < aheadBytes) {
+            dropped += audioQueue.front().size();
+            queuedBytes -= audioQueue.front().size();
+            audioQueue.pop();
+        }
+        playedBytes += dropped;
+        flushClient = true;
+        const Position position{static_cast<double>(playedBytes) / BYTES_PER_SECOND, durationSeconds};
+        lock.unlock();
+        queueCv.notify_all();
+        return position;
+    }
+
+    bytesBeforeSeek = playedBytes;
+    droppedForSeek = queuedBytes;
+    audioQueue = {};
+    queuedBytes = 0;
+    seekInFlight = true;   // every packet still in the decoder is from before the jump
+    decodingFinished = false;
+    flushClient = true;
+    ++seekTicket;
+    seekRequester(target, seekTicket);
+    // Optimistic, so a second jump issued before this one lands builds on it.
+    playedBytes = static_cast<uint64_t>(target * BYTES_PER_SECOND);
+    const Position position{target, durationSeconds};
+    lock.unlock();
+    queueCv.notify_all();
+    return position;
 }
 
 PcmBuffer::Next PcmBuffer::next()

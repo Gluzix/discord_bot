@@ -9,7 +9,6 @@
 #include <dpp/dpp.h>
 #include <QDebug>
 
-#include <algorithm>
 #include <chrono>
 #include <ctime>
 
@@ -26,10 +25,6 @@ void SongPlayer::arm()
 SongPlayer::Outcome SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
 {
     pcmBuffer.reset();
-    {
-        std::lock_guard<std::mutex> lock(pcmBuffer.mutex());
-        activeResampler = nullptr;
-    }
     currentSongFailed = false;
     voiceLost = false;
 
@@ -70,60 +65,12 @@ void SongPlayer::stop()
 
 std::optional<SongPlayer::Position> SongPlayer::seekBy(int deltaSeconds)
 {
-    return seek(deltaSeconds, true);
+    return pcmBuffer.seek(deltaSeconds, true);
 }
 
 std::optional<SongPlayer::Position> SongPlayer::seekTo(int seconds)
 {
-    return seek(seconds, false);
-}
-
-std::optional<SongPlayer::Position> SongPlayer::seek(double seconds, bool relative)
-{
-    std::unique_lock<std::mutex> lock(pcmBuffer.mutex());
-    if (!pcmBuffer.running() || pcmBuffer.songEnding || activeResampler == nullptr) {
-        return std::nullopt;
-    }
-
-    const double current = static_cast<double>(pcmBuffer.playedBytes) / PcmBuffer::BYTES_PER_SECOND;
-    double target = std::max(relative ? current + seconds : seconds, 0.0);
-    if (pcmBuffer.durationSeconds > 0) {
-        target = std::min(target, pcmBuffer.durationSeconds); // a target at the end just ends the song
-    }
-
-    // A forward the queue already holds needs no decoder: drop whole packets.
-    const double aheadSeconds = target - current;
-    if (!pcmBuffer.seekInFlight && aheadSeconds > 0
-        && aheadSeconds * PcmBuffer::BYTES_PER_SECOND <= static_cast<double>(pcmBuffer.queuedBytes)) {
-        const size_t aheadBytes = static_cast<size_t>(aheadSeconds * PcmBuffer::BYTES_PER_SECOND);
-        size_t dropped = 0;
-        while (!pcmBuffer.audioQueue.empty() && dropped < aheadBytes) {
-            dropped += pcmBuffer.audioQueue.front().size();
-            pcmBuffer.queuedBytes -= pcmBuffer.audioQueue.front().size();
-            pcmBuffer.audioQueue.pop();
-        }
-        pcmBuffer.playedBytes += dropped;
-        pcmBuffer.flushClient = true;
-        const Position position{static_cast<double>(pcmBuffer.playedBytes) / PcmBuffer::BYTES_PER_SECOND, pcmBuffer.durationSeconds};
-        lock.unlock();
-        pcmBuffer.cv().notify_all();
-        return position;
-    }
-
-    pcmBuffer.bytesBeforeSeek = pcmBuffer.playedBytes;
-    pcmBuffer.droppedForSeek = pcmBuffer.queuedBytes;
-    pcmBuffer.audioQueue = {};
-    pcmBuffer.queuedBytes = 0;
-    pcmBuffer.seekInFlight = true;   // every packet still in the decoder is from before the jump
-    pcmBuffer.decodingFinished = false;
-    pcmBuffer.flushClient = true;
-    ++pcmBuffer.seekTicket;
-    activeResampler->requestSeek(target, pcmBuffer.seekTicket);
-    // Optimistic, so a second jump issued before this one lands builds on it.
-    pcmBuffer.playedBytes = static_cast<uint64_t>(target * PcmBuffer::BYTES_PER_SECOND);
-    lock.unlock();
-    pcmBuffer.cv().notify_all();
-    return Position{target, pcmBuffer.durationSeconds};
+    return pcmBuffer.seek(seconds, false);
 }
 
 void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
@@ -317,25 +264,15 @@ void SongPlayer::decode(Song &song)
     };
 
     auto onSeeked = [this](uint64_t ticket, bool ok) {
-        std::unique_lock<std::mutex> lock(pcmBuffer.mutex());
-        if (ticket != pcmBuffer.seekTicket) {
-            return; // an older seek: a newer one is still on its way
-        }
-        pcmBuffer.seekInFlight = false;
-        if (!ok) {
-            pcmBuffer.playedBytes = pcmBuffer.bytesBeforeSeek + pcmBuffer.droppedForSeek; // the dropped queue was a forward
-        }
-        lock.unlock();
-        pcmBuffer.cv().notify_all();
+        pcmBuffer.seekApplied(ticket, ok);
     };
 
     // The duration first: it clamps a seek, and a seek is possible the moment
-    // the resampler is published.
+    // the requester is published.
     pcmBuffer.setDuration(resampler.durationSeconds());
-    {
-        std::lock_guard<std::mutex> lock(pcmBuffer.mutex());
-        activeResampler = &resampler;
-    }
+    pcmBuffer.setSeekRequester([&resampler](double seconds, uint64_t ticket) {
+        resampler.requestSeek(seconds, ticket);
+    });
 
     // A rewind re-runs a stream that is already gone - say it once per song.
     bool streamLostAnnounced = false;
@@ -359,8 +296,5 @@ void SongPlayer::decode(Song &song)
         }
     }
 
-    {
-        std::lock_guard<std::mutex> lock(pcmBuffer.mutex());
-        activeResampler = nullptr; // it must not outlive the resampler below
-    }
+    pcmBuffer.clearSeekRequester(); // it must not outlive the resampler below
 }
