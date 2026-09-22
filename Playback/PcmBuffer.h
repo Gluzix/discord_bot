@@ -11,6 +11,8 @@
 #include <queue>
 #include <vector>
 
+// Everything a song's decoder and sender share: the bounded packet queue, the
+// play position, the seek handshake and the live flag. No dpp, FFmpeg or Qt.
 class PcmBuffer
 {
 public:
@@ -73,14 +75,7 @@ public:
     // Returns early on a stop or a flush request.
     void pacingWait(std::chrono::milliseconds timeout);
 
-    // TODO: To Be removed in future refactor
-    std::mutex &mutex();
-    // TODO: To Be removed in future refactor
-    std::condition_variable &cv();
-
 private:
-    friend class SongPlayer; // TODO: scaffolding until the state is behind methods
-
     std::atomic<bool> isPlaying{false};
     mutable std::mutex queueMutex;
     std::condition_variable queueCv;

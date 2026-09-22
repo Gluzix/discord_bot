@@ -3,9 +3,7 @@
 #include "Song.h"
 #include "PcmBuffer.h"
 
-#include <condition_variable>
 #include <functional>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>

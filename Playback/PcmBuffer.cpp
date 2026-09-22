@@ -207,13 +207,3 @@ void PcmBuffer::pacingWait(std::chrono::milliseconds timeout)
     std::unique_lock<std::mutex> lock(queueMutex);
     queueCv.wait_for(lock, timeout, [this] { return !isPlaying || flushClient; });
 }
-
-std::mutex &PcmBuffer::mutex()
-{
-    return queueMutex;
-}
-
-std::condition_variable &PcmBuffer::cv()
-{
-    return queueCv;
-}
