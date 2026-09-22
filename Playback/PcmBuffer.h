@@ -17,6 +17,24 @@ public:
     void stop();
     bool running() const;
 
+    // Per song; leaves the live flag alone - arm() comes before play().
+    void reset();
+
+    enum class PushResult { Queued, Stale, Stopped };
+
+    // Blocks while the queue is at its cap.
+    PushResult push(std::vector<uint8_t> packet);
+
+    void markFinished();
+
+    // Blocks until a seek (true: decode again) or a stop (false).
+    bool finishedAndWaitForRewind();
+
+    void setDuration(double seconds);
+
+    // Leftover audio means the song was cut short (skip/stop).
+    bool cutShort() const;
+
     // TODO: To Be removed in future refactor
     std::mutex &mutex();
     // TODO: To Be removed in future refactor
@@ -26,7 +44,7 @@ private:
     friend class SongPlayer; // TODO: scaffolding until the state is behind methods
 
     std::atomic<bool> isPlaying{false};
-    std::mutex queueMutex;
+    mutable std::mutex queueMutex;
     std::condition_variable queueCv;
 
     // The decoder runs at most MAX_QUEUED_SECONDS ahead of playback - a cap

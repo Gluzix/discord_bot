@@ -25,20 +25,10 @@ void SongPlayer::arm()
 
 SongPlayer::Outcome SongPlayer::play(dpp::discord_voice_client *voiceClient, Song &song)
 {
+    pcmBuffer.reset();
     {
         std::lock_guard<std::mutex> lock(pcmBuffer.mutex());
-        pcmBuffer.decodingFinished = false;
-        pcmBuffer.audioQueue = {};
-        pcmBuffer.queuedBytes = 0;
-        pcmBuffer.playedBytes = 0;
-        pcmBuffer.seekTicket = 0;
-        pcmBuffer.seekInFlight = false;
-        pcmBuffer.bytesBeforeSeek = 0;
-        pcmBuffer.droppedForSeek = 0;
-        pcmBuffer.songEnding = false;
-        pcmBuffer.flushClient = false;
         activeResampler = nullptr;
-        pcmBuffer.durationSeconds = 0;
     }
     currentSongFailed = false;
     voiceLost = false;
@@ -62,12 +52,7 @@ SongPlayer::Outcome SongPlayer::play(dpp::discord_voice_client *voiceClient, Son
     // Leftover audio means the song was cut short (skip/stop): flush dpp's
     // ~1s buffer so the next song doesn't queue up behind this one's tail.
     // A song that ended on its own keeps its tail. A pause dies with its song.
-    bool cutShort = false;
-    {
-        std::lock_guard<std::mutex> lock(pcmBuffer.mutex());
-        cutShort = !(pcmBuffer.decodingFinished && pcmBuffer.audioQueue.empty());
-    }
-    if (cutShort) {
+    if (pcmBuffer.cutShort()) {
         voiceClient->stop_audio();
     }
     if (voiceClient->is_paused()) {
@@ -264,10 +249,7 @@ void SongPlayer::decode(Song &song)
     // Whatever happens here, the sender waits on the queue and must be
     // released - every exit path has to mark decoding as finished.
     struct FinishGuard { std::function<void()> done; ~FinishGuard() { if (done) done(); } };
-    FinishGuard finish{[this] {
-        { std::lock_guard<std::mutex> lock(pcmBuffer.mutex()); pcmBuffer.decodingFinished = true; }
-        pcmBuffer.cv().notify_one();
-    }};
+    FinishGuard finish{[this] { pcmBuffer.markFinished(); }};
 
     // Stopped between arm() and here - don't even launch yt-dlp.
     if (!pcmBuffer.running()) {
@@ -358,17 +340,7 @@ void SongPlayer::decode(Song &song)
     }
 
     auto sink = [this](std::vector<uint8_t> pkt) {
-        std::unique_lock<std::mutex> lock(pcmBuffer.mutex());
-        pcmBuffer.cv().wait(lock, [this] {
-            return pcmBuffer.queuedBytes < PcmBuffer::MAX_QUEUED_BYTES || pcmBuffer.seekInFlight || !pcmBuffer.running();
-        });
-        if (!pcmBuffer.running() || pcmBuffer.seekInFlight) {
-            return; // a packet from before the jump
-        }
-        pcmBuffer.queuedBytes += pkt.size();
-        pcmBuffer.audioQueue.push(std::move(pkt));
-        lock.unlock();
-        pcmBuffer.cv().notify_one();
+        pcmBuffer.push(std::move(pkt));
     };
 
     auto onSeeked = [this](uint64_t ticket, bool ok) {
@@ -384,10 +356,12 @@ void SongPlayer::decode(Song &song)
         pcmBuffer.cv().notify_all();
     };
 
+    // The duration first: it clamps a seek, and a seek is possible the moment
+    // the resampler is published.
+    pcmBuffer.setDuration(resampler.durationSeconds());
     {
         std::lock_guard<std::mutex> lock(pcmBuffer.mutex());
         activeResampler = &resampler;
-        pcmBuffer.durationSeconds = resampler.durationSeconds();
     }
 
     // A rewind re-runs a stream that is already gone - say it once per song.
@@ -407,14 +381,9 @@ void SongPlayer::decode(Song &song)
             event.owner->message_create(lost);
         }
 
-        std::unique_lock<std::mutex> lock(pcmBuffer.mutex());
-        pcmBuffer.decodingFinished = true; // the sender may end the song once the queue drains
-        pcmBuffer.cv().notify_all();
-        pcmBuffer.cv().wait(lock, [this] { return pcmBuffer.seekInFlight || !pcmBuffer.running(); });
-        if (!pcmBuffer.running()) {
+        if (!pcmBuffer.finishedAndWaitForRewind()) {
             break;
         }
-        pcmBuffer.decodingFinished = false; // a rewind after end of stream: decode again
     }
 
     {
