@@ -158,7 +158,7 @@ void SongPlayer::streamAudio(dpp::discord_voice_client *voiceClient)
         watchdog.reset();
     }
 
-    // Not a plain store: the decoder waits on queueCv until the song ends.
+    // Not a plain store: the decoder waits inside the buffer until the song ends.
     stop();
 }
 

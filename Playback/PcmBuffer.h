@@ -1,12 +1,12 @@
 #pragma once
 
 #include <atomic>
-#include <mutex>
-#include <condition_variable>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <queue>
 #include <vector>
@@ -16,8 +16,6 @@
 class PcmBuffer
 {
 public:
-    PcmBuffer() = default;
-
     void arm();
     void stop();
     bool running() const;
