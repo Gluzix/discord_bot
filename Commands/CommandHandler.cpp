@@ -91,7 +91,9 @@ void CommandHandler::setupBot()
     playback->setVoiceClientLookup([bot = bot](uint64_t guildId) -> dpp::discord_voice_client * {
         dpp::discord_client *shard = bot->get_shard(0);
         dpp::voiceconn *vc = shard ? shard->get_voice(guildId) : nullptr;
-        if (vc && vc->voiceclient && vc->voiceclient->is_ready()) {
+        // is_ready() only means the secret key arrived; it stays true all
+        // through dpp's teardown, so terminating is what rules a dying one out.
+        if (vc && vc->voiceclient && vc->voiceclient->is_ready() && !vc->voiceclient->terminating) {
             return vc->voiceclient.get();
         }
         return nullptr;
