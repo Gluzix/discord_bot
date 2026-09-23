@@ -24,6 +24,24 @@ struct PlaylistListing
     size_t totalCount{0};               // how many videos the playlist has in all (0 = unknown)
 };
 
+// Runs yt-dlp and parses its output.
+// =======================================================
+// Rules:
+// - Every run lives in a job object: a kill must also reach what yt-dlp
+//   spawns (the PyInstaller child interpreter, a JS runtime).
+// - Every run is bounded: the pipe is polled with PeekNamedPipe, never read
+//   blocking, so a cancel or YT_DLP_TIMEOUT_SECONDS can end it at any moment.
+// - The command line goes through CreateProcessW as UTF-16: the A variant
+//   would mangle non-ASCII search queries through the ANSI code page.
+// - yt-dlp writes piped output in the ANSI code page (cp1250 here) without
+//   --encoding utf-8, and sometimes even with it, which Discord shows as
+//   mojibake: every run passes the flag and every title goes through
+//   ensureUtf8().
+// - A band-name search often ranks the artist's channel first, and handing
+//   that to "ytsearch1:" makes yt-dlp extract every upload on it (minutes,
+//   with the title of the first and the url of the last) - so a search picks
+//   the first plain video from a flat listing instead.
+// =======================================================
 class WindowsProcessRunner
 {
 public:
@@ -49,8 +67,6 @@ private:
         bool cancelled{false};          // killed because the caller lost interest
         std::vector<std::string> lines; // stdout split into non-empty lines
     };
-    // Every run is bounded: the CancelCheck or YT_DLP_TIMEOUT_SECONDS kills
-    // yt-dlp together with everything it spawned.
     static YtDlpOutput runYtDlp(const std::string &args, const CancelCheck &cancelled);
 
     // Lists the top few search results flat (no extraction, ~2s) and returns
