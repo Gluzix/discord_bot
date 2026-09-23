@@ -5,6 +5,10 @@
 
 #include <string>
 
+namespace dpp {
+struct interaction_create_t;
+}
+
 class PlaybackController;
 
 class Command : public ICommand
@@ -23,12 +27,17 @@ public:
 
     // Generic behavior: reply with the description text.
     void execute(const dpp::slashcommand_t &event) override;
+    // Generic behavior: a command without buttons knows no click.
+    void execute(const dpp::button_click_t &event, const std::string &argument) override;
 
 protected:
+    // A click answers only the clicker; a slash command answers the channel.
+    static void reply(const dpp::interaction_create_t &event, const std::string &text);
+
     // The audience-loyalty rule shared by every playback-control command:
     // the user must be in the bot's channel (or the bot unconnected/alone).
     // Replies with the refusal and returns false when control is denied.
-    bool userMayControl(const dpp::slashcommand_t &event, const char *refusalReply = messages::mustBeWithBot);
+    bool userMayControl(const dpp::interaction_create_t &event, const char *refusalReply = messages::mustBeWithBot);
 
     // The summoning rule for /play and /join: while a session is active
     // (playing or queued), only its audience may call the bot elsewhere;

@@ -77,4 +77,7 @@ inline constexpr const char* queueNowPlayingPrefix = "Now playing: ";
 inline constexpr const char* queueMorePrefix       = "...and ";
 inline constexpr const char* queueMoreSuffix       = " more";
 
+// the buttons under "Playing:"
+inline constexpr const char* unknownButton = "That button doesn't work any more - use the slash commands!";
+
 }

@@ -32,7 +32,7 @@ VoiceConnector::Result VoiceConnector::ensureJoined(const dpp::slashcommand_t &e
     return Result::Joined;
 }
 
-bool VoiceConnector::botIsAloneInChannel(const dpp::slashcommand_t &event)
+bool VoiceConnector::botIsAloneInChannel(const dpp::interaction_create_t &event)
 {
     dpp::guild* guild = dpp::find_guild(event.command.guild_id);
     dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
@@ -48,7 +48,7 @@ bool VoiceConnector::botIsAloneInChannel(const dpp::slashcommand_t &event)
     return true;
 }
 
-bool VoiceConnector::userInBotChannel(const dpp::slashcommand_t &event)
+bool VoiceConnector::userInBotChannel(const dpp::interaction_create_t &event)
 {
     dpp::guild* guild = dpp::find_guild(event.command.guild_id);
     dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);

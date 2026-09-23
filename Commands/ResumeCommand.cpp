@@ -15,13 +15,23 @@ ResumeCommand::ResumeCommand(std::shared_ptr<PlaybackController> playback_)
 
 void ResumeCommand::execute(const dpp::slashcommand_t &event)
 {
+    run(event);
+}
+
+void ResumeCommand::execute(const dpp::button_click_t &event, const std::string &)
+{
+    run(event);
+}
+
+void ResumeCommand::run(const dpp::interaction_create_t &event)
+{
     if (!userMayControl(event)) {
         return;
     }
 
     if (playback->resume()) {
-        event.reply(messages::resume);
+        reply(event, messages::resume);
     } else {
-        event.reply(messages::nothingToResume);
+        reply(event, messages::nothingToResume);
     }
 }
