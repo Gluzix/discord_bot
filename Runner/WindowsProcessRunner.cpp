@@ -297,5 +297,8 @@ PlaylistListing WindowsProcessRunner::listPlaylist(const std::string &playlistUr
             pendingUrl.clear();
         }
     }
+    if (!pendingUrl.empty()) {
+        qDebug() << "Playlist listing ended mid-entry - dropped" << QString::fromStdString(pendingUrl);
+    }
     return listing;
 }
