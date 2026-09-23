@@ -31,7 +31,7 @@ public:
     void execute(const dpp::button_click_t &event, const std::string &argument) override;
 
 protected:
-    // interactions::reply decides how an interaction is answered.
+    // A command's result, answered through interactions::reply.
     static void reply(const dpp::interaction_create_t &event, const std::string &text);
 
     // The audience-loyalty rule shared by every playback-control command:

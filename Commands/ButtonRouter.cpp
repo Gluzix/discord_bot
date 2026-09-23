@@ -32,7 +32,7 @@ void ButtonRouter::handle(const dpp::button_click_t &event)
     auto command = click ? commands.find(click->command) : commands.end();
     if (command == commands.end()) {
         qDebug().noquote() << name << "is not a known button";
-        interactions::reply(event, messages::unknownButton);
+        interactions::refuse(event, messages::unknownButton);
         return;
     }
 

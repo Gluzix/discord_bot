@@ -13,7 +13,10 @@ namespace interactions {
 // budget was already gone on arrival tells a late dispatch from a slow handler.
 int64_t ageMs(const dpp::interaction_create_t &event);
 
-// A click answers only the clicker; a slash command answers the channel.
+// The result, shown to everyone; a click rewrites the status line under the title so the row stays put.
 void reply(const dpp::interaction_create_t &event, const std::string &text);
+
+// For the clicker's eyes only; a slash command answers the channel.
+void refuse(const dpp::interaction_create_t &event, const std::string &text);
 
 }
