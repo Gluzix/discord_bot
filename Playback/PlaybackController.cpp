@@ -223,6 +223,12 @@ bool PlaybackController::resume()
     return false;
 }
 
+bool PlaybackController::isPaused()
+{
+    dpp::discord_voice_client *voiceClient = clientIfSongInProgress();
+    return voiceClient && voiceClient->is_paused();
+}
+
 namespace {
 
 // Reached only with a song in progress, so playing is true either way.

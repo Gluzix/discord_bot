@@ -2,6 +2,7 @@
 
 #include <dpp/dpp.h>
 #include "ICommand.h"
+#include "ButtonRouter.h"
 
 #include <memory>
 #include <unordered_map>
@@ -32,4 +33,5 @@ private:
     std::shared_ptr<PlaybackController> playback;
     std::shared_ptr<VoiceRejoiner> rejoiner;
     std::unordered_map<std::string, std::unique_ptr<ICommand>> commands{};
+    std::unique_ptr<ButtonRouter> buttonRouter;
 };

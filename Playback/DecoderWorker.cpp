@@ -3,6 +3,7 @@
 #include "WindowsProcessRunner.h"
 #include "Messages.h"
 #include "Labels.h"
+#include "PlaybackButtons.h"
 #include "Log.h"
 
 #include <dpp/dpp.h>
@@ -131,6 +132,7 @@ void DecoderWorker::run()
     if (!song.isLoopReplay) {
         dpp::message nowPlaying(messages::playingPrefix + labels::render(media.title, media.webpageUrl, song.target));
         nowPlaying.set_allowed_mentions();
+        nowPlaying.add_component(buttons::controlRow());
         notifyUser(nowPlaying);
     }
 

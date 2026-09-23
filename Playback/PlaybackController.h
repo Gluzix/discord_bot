@@ -92,6 +92,8 @@ public:
 
     bool resume();
 
+    bool isPaused();
+
     // Sets the loop mode. Persists until changed or /stop turns it Off.
     void setLoopMode(LoopMode mode);
 

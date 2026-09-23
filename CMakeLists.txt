@@ -56,11 +56,14 @@ add_executable(discord_bot
   Commands/RewindCommand.h Commands/RewindCommand.cpp
   Commands/SeekCommand.h Commands/SeekCommand.cpp
   Commands/PlaylistCommand.h Commands/PlaylistCommand.cpp
+  Commands/ButtonRouter.h Commands/ButtonRouter.cpp
   Playback/PcmResampler.h Playback/PcmResampler.cpp
   Helpers/Labels.h Helpers/Labels.cpp
   Helpers/TimeText.h Helpers/TimeText.cpp
   Helpers/Log.h Helpers/Log.cpp
   Helpers/YoutubeInput.h Helpers/YoutubeInput.cpp
+  Helpers/PlaybackButtons.h Helpers/PlaybackButtons.cpp
+  Helpers/Interactions.h Helpers/Interactions.cpp
   Playback/ResolverWorker.h Playback/ResolverWorker.cpp
   Playback/SongPlayer.h Playback/SongPlayer.cpp
   Playback/VoiceDrainWatchdog.h Playback/VoiceDrainWatchdog.cpp

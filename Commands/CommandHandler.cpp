@@ -16,25 +16,13 @@
 #include "SeekCommand.h"
 #include "PlaylistCommand.h"
 #include "VoiceRejoiner.h"
+#include "Interactions.h"
 #include <QDebug>
 #include <QString>
 
 #include <chrono>
 #include <cstdint>
 #include <string>
-
-namespace {
-
-// Discord drops an interaction 3 s after it was issued, so how much of that
-// budget was already gone on arrival tells a late dispatch from a slow handler.
-int64_t interactionAgeMs(const dpp::slashcommand_t &event)
-{
-    const std::chrono::duration<double> issuedAt(event.command.id.get_creation_time());
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch() - issuedAt).count();
-}
-
-}
 
 CommandHandler::CommandHandler()
 {
@@ -54,6 +42,7 @@ void CommandHandler::prepare()
     }
 
     setupCommands();
+    buttonRouter = std::make_unique<ButtonRouter>(commands, playback);
     setupBot();
 }
 
@@ -161,13 +150,17 @@ void CommandHandler::setupBot()
             return;
         }
 
-        qDebug().noquote() << name << "received" << interactionAgeMs(event)
+        qDebug().noquote() << name << "received" << interactions::ageMs(event)
                            << "ms after it was issued";
         const std::chrono::steady_clock::time_point startedAt = std::chrono::steady_clock::now();
         command->second->execute(event);
         qDebug().noquote() << name << "handled in"
                            << std::chrono::duration_cast<std::chrono::milliseconds>(
                                   std::chrono::steady_clock::now() - startedAt).count() << "ms";
+    });
+
+    bot->on_button_click([this](const dpp::button_click_t& event) {
+        buttonRouter->handle(event);
     });
 
     bot->on_ready([this](const dpp::ready_t& event) {
