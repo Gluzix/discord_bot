@@ -1,6 +1,5 @@
 #include "DecoderWorker.h"
 #include "PcmResampler.h"
-#include "WindowsProcessRunner.h"
 #include "Messages.h"
 #include "Labels.h"
 #include "PlaybackButtons.h"
@@ -10,6 +9,8 @@
 #include <QDebug>
 
 #include <ctime>
+
+const int64_t FRESH_FOR_SECONDS = 3600;
 
 DecoderWorker::DecoderWorker(PcmBuffer &buffer_, Song &song_, std::function<void(std::string)> onLabelResolved_)
     : buffer(buffer_)
@@ -50,52 +51,7 @@ void DecoderWorker::run()
         return;
     }
 
-    // A queued song announces itself in a fresh channel message, leaving its
-    // "Queued at position N" reply intact as history (also immune to the
-    // 15-minute interaction token limit). An immediate song still morphs its
-    // "Looking for your song..." placeholder.
-    const bool announceInNewMessage = song.wasQueued;
-    dpp::slashcommand_t &event = *song.event;
-    auto notifyUser = [&event, announceInNewMessage](dpp::message msg) {
-        if (announceInNewMessage) {
-            msg.channel_id = event.command.channel_id;
-            event.owner->message_create(msg);
-        } else {
-            event.edit_original_response(msg);
-        }
-    };
-    auto fail = [&](const char *msg) {
-        songFailed = true;
-        // A held song's retries are quiet - the notice went out once.
-        if (song.failedAttempts == 0) {
-            notifyUser(dpp::message(msg));
-        }
-    };
-
-    // googlevideo urls are ip-bound and expire after a few hours; use the
-    // resolver's prefetch only while it's still fresh.
-    const int64_t FRESH_FOR_SECONDS = 3600;
-    bool prefetchIsFresh = !song.directUrl.empty()
-        && (static_cast<int64_t>(time(nullptr)) - song.resolvedAtSeconds) < FRESH_FOR_SECONDS;
-
-    ResolvedMedia media;
-    if (prefetchIsFresh) {
-        media.title = song.title;
-        media.webpageUrl = song.webpageUrl;
-        media.directUrl = song.directUrl;
-    } else {
-        // A skip/stop while yt-dlp runs kills it - nobody waits on a resolve
-        // nobody wants anymore.
-        media = WindowsProcessRunner::resolveMedia(song.target, [this] { return !buffer.running(); });
-        if (!media.directUrl.empty()) {
-            // Re-resolved (expired prefetch): write it back so a loop replay
-            // starts from the fresh url with no extra bookkeeping.
-            song.title = media.title;
-            song.webpageUrl = media.webpageUrl;
-            song.directUrl = media.directUrl;
-            song.resolvedAtSeconds = static_cast<int64_t>(time(nullptr));
-        }
-    }
+    ResolvedMedia media = computeResolveMedia();
 
     // A cancelled resolve comes back empty too - check the skip first so it
     // isn't reported as an error.
@@ -156,6 +112,8 @@ void DecoderWorker::run()
 
     // The decoder has to outlive end of stream: it runs a minute ahead, so
     // otherwise the last minute of every song couldn't be rewound.
+
+    dpp::slashcommand_t &event = *song.event;
     for (;;) {
         const PcmResampler::RunEnd runEnd = resampler.run(sink, [this] { return buffer.running(); }, onSeeked);
         if (runEnd == PcmResampler::RunEnd::ReadError && !streamLostAnnounced) {
@@ -174,4 +132,59 @@ void DecoderWorker::run()
     }
 
     buffer.clearSeekRequester(); // it must not outlive the resampler below
+}
+
+// A queued song announces itself in a fresh channel message, leaving its
+// "Queued at position N" reply intact as history (also immune to the
+// 15-minute interaction token limit). An immediate song still morphs its
+// "Looking for your song..." placeholder.
+void DecoderWorker::notifyUser(dpp::message msg)
+{
+    const bool announceInNewMessage = song.wasQueued;
+    dpp::slashcommand_t &event = *song.event;
+
+    if (announceInNewMessage) {
+        msg.channel_id = event.command.channel_id;
+        event.owner->message_create(msg);
+    } else {
+        event.edit_original_response(msg);
+    }
+}
+
+void DecoderWorker::fail(const char *msg)
+{
+    songFailed = true;
+    // A held song's retries are quiet - the notice went out once.
+    if (song.failedAttempts == 0) {
+        notifyUser(dpp::message(msg));
+    }
+}
+
+ResolvedMedia DecoderWorker::computeResolveMedia()
+{
+    ResolvedMedia media;
+
+    // googlevideo urls are ip-bound and expire after a few hours; use the
+    // resolver's prefetch only while it's still fresh.
+    bool prefetchIsFresh = !song.directUrl.empty()
+                           && (static_cast<int64_t>(time(nullptr)) - song.resolvedAtSeconds) < FRESH_FOR_SECONDS;
+
+    if (prefetchIsFresh) {
+        media.title = song.title;
+        media.webpageUrl = song.webpageUrl;
+        media.directUrl = song.directUrl;
+    } else {
+        // A skip/stop while yt-dlp runs kills it - nobody waits on a resolve
+        // nobody wants anymore.
+        media = WindowsProcessRunner::resolveMedia(song.target, [this] { return !buffer.running(); });
+        if (!media.directUrl.empty()) {
+            // Re-resolved (expired prefetch): write it back so a loop replay
+            // starts from the fresh url with no extra bookkeeping.
+            song.title = media.title;
+            song.webpageUrl = media.webpageUrl;
+            song.directUrl = media.directUrl;
+            song.resolvedAtSeconds = static_cast<int64_t>(time(nullptr));
+        }
+    }
+    return media;
 }

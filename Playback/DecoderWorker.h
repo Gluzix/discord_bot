@@ -2,10 +2,15 @@
 
 #include "Song.h"
 #include "PcmBuffer.h"
+#include "WindowsProcessRunner.h"
 
 #include <functional>
 #include <string>
 #include <thread>
+
+namespace dpp {
+struct message;
+}
 
 // Resolves, announces and decodes one song into the buffer's producer side.
 class DecoderWorker
@@ -26,6 +31,10 @@ public:
 
 private:
     void run();
+    void notifyUser(dpp::message msg);
+    void fail(const char *msg);
+
+    ResolvedMedia computeResolveMedia();
 
     PcmBuffer &buffer;
     Song &song;
