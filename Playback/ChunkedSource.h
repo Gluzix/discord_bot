@@ -6,10 +6,16 @@
 
 struct AVDictionary;
 
-// googlevideo serves an open-ended read at about twice the audio bitrate, but
-// a bounded range at full speed (the reason yt-dlp downloads in chunks). So
-// the file is fetched in bounded ranges through FFmpeg's own http client, one
-// complete request per chunk, and the demuxer reads from memory.
+// Feeds the demuxer from memory, fetching the url in bounded ranges.
+// =======================================================
+// Rules:
+// - googlevideo serves an open-ended read at about twice the audio bitrate
+//   but a bounded range at full speed (the reason yt-dlp downloads in
+//   chunks), so every fetch is one complete bounded request.
+// - FFmpeg's own reconnect option is not used: it treats the end of a
+//   bounded range as a premature end (it knows the whole file's size) and
+//   burns seconds retrying, so a short chunk is retried here instead.
+// =======================================================
 class ChunkedSource
 {
 public:
@@ -29,10 +35,6 @@ public:
     static int readCallback(void *opaque, uint8_t *buf, int size);
     static int64_t seekCallback(void *opaque, int64_t offset, int whence);
 
-    // One bounded request. FFmpeg's own reconnect option is not used: it
-    // treats the end of a bounded range as a premature end (it knows the
-    // whole file's size) and burns seconds retrying, so a short chunk is
-    // retried here instead.
     bool fetchChunkAt(int64_t offset);
     int read(uint8_t *buf, int size);
     int64_t seek(int64_t offset, int whence);

@@ -11,9 +11,17 @@ namespace dpp {
 class discord_voice_client;
 }
 
-// Commands one song: its lifecycle, its outcome and the seek API. A
-// DecoderWorker and a SenderWorker do the work, sharing a PcmBuffer. Knows
-// nothing about the queue or loop policy - that stays in PlaybackController.
+// Commands one song; the queue and loop policy stay in PlaybackController.
+// =======================================================
+// Rules:
+// - play() joins the sender first: after that no song thread is on the voice
+//   client, so play() is the one place that may call it after a song.
+// - Those client calls come before the decoder join: a decoder stuck in
+//   yt-dlp can outlive stop()'s bounded wait, and past that the client may
+//   be gone.
+// - After VoiceLost not one client call more, not even is_paused(): dpp may
+//   already have destroyed the client it gave up on.
+// =======================================================
 class SongPlayer
 {
 public:
@@ -26,7 +34,7 @@ public:
     using Position = PcmBuffer::Position;
 
     // onLabelResolved is called (from the decoder thread) with the rendered
-    // "now playing" label once the song resolves, so /queue can show the title.
+    // "now playing" label once the song resolves.
     explicit SongPlayer(std::function<void(std::string)> onLabelResolved_);
 
     // Makes the coming play() stoppable from this moment: a stop() landing

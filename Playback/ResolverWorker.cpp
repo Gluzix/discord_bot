@@ -13,13 +13,10 @@
 #include <dpp/dpp.h>
 #include <QDebug>
 
+// Only a short lookahead - direct urls expire within hours, so resolving a
+// 100-song playlist up front would be a hundred wasted yt-dlp runs.
 constexpr size_t LOOKAHEAD = 5;
 
-// Resolves the next few queued songs ahead of time: titles show up in /queue
-// and the "Queued at position N" replies, and SongPlayer can start a prefetched
-// song without the multi-second yt-dlp pause between tracks. Only a short
-// lookahead - direct urls expire within hours, so resolving a 100-song
-// playlist up front would be a hundred wasted yt-dlp runs.
 ResolverWorker::ResolverWorker(std::deque<Song> &songQueue_,
                                std::condition_variable &stateCv_,
                                std::mutex &stateMutex_)
@@ -36,7 +33,7 @@ ResolverWorker::~ResolverWorker()
         std::lock_guard<std::mutex> lock(stateMutex);
         running = false;
     }
-    stateCv.notify_all(); // wake run() so it sees running == false and returns
+    stateCv.notify_all();
     if (thread.joinable()) {
         thread.join();
     }
@@ -71,7 +68,6 @@ void ResolverWorker::run()
     }
 }
 
-// call with stateMutex held
 Song *ResolverWorker::nextUnresolved()
 {
     for (size_t i = 0; i < songQueue.size() && i < LOOKAHEAD; ++i) {
@@ -88,7 +84,6 @@ void ResolverWorker::resolveSongs(const uint64_t songId, const std::string &targ
     std::string label;
     size_t position = 0;
 
-    // Shutdown kills a running yt-dlp instead of waiting it out.
     ResolvedMedia media = WindowsProcessRunner::resolveMedia(target, [this] { return !running.load(); });
     {
         std::lock_guard<std::mutex> lock(stateMutex);
@@ -122,7 +117,6 @@ void ResolverWorker::resolveSongs(const uint64_t songId, const std::string &targ
     // The worker may be holding off on this very song.
     stateCv.notify_all();
 
-    // Upgrade the "Queued at position N" reply with what we found.
     if (requestEvent) {
         dpp::message queuedInfo(messages::queuedAtPrefix + std::to_string(position) + messages::queuedSeparator + label);
         queuedInfo.set_allowed_mentions();

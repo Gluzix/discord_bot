@@ -11,8 +11,20 @@
 #include <queue>
 #include <vector>
 
-// Everything a song's decoder and sender share: the bounded packet queue, the
-// play position, the seek handshake and the live flag. No dpp, FFmpeg or Qt.
+// Everything a song's decoder and sender share; no dpp, FFmpeg or Qt.
+// =======================================================
+// Rules:
+// - Only stop() sets isPlaying false, and it does so under queueMutex: the
+//   flag is in the queueCv predicates, so no waiter can miss the wakeup.
+// - reset() leaves isPlaying alone: arm() comes before play(), and a stop()
+//   in between must still end the song.
+// - The seek requester runs under queueMutex, so it must not take a lock the
+//   decoder holds while it pushes: the order is queueMutex, then the
+//   resampler's pendingSeekMutex.
+// - From a seek the queue can't serve until seekApplied() brings the newest
+//   ticket, seekInFlight holds and every push is Stale: the packets still in
+//   the decoder are from before the jump.
+// =======================================================
 class PcmBuffer
 {
 public:
@@ -20,7 +32,6 @@ public:
     void stop();
     bool running() const;
 
-    // Per song; leaves the live flag alone - arm() comes before play().
     void reset();
 
     enum class PushResult { Queued, Stale, Stopped };
@@ -35,13 +46,10 @@ public:
 
     void setDuration(double seconds);
 
-    // Forwards a seek to whatever can serve it; called under the mutex, so it
-    // must not take one the decoder holds while it pushes.
     using SeekRequester = std::function<void(double seconds, uint64_t ticket)>;
     void setSeekRequester(SeekRequester requester);
     void clearSeekRequester();
 
-    // Only the newest ticket counts.
     void seekApplied(uint64_t ticket, bool ok);
 
     // Leftover audio means the song was cut short (skip/stop).
@@ -53,9 +61,9 @@ public:
         double durationSeconds{0}; // 0 = unknown
     };
 
-    // The one seek path: `seconds` is added to the current position when
-    // relative, otherwise it is the target itself. nullopt when there is
-    // nothing to seek in right now.
+    // `seconds` is added to the current position when relative, otherwise
+    // it is the target itself. nullopt when there is nothing to seek in
+    // right now.
     std::optional<Position> seek(double seconds, bool relative);
 
     struct Next
@@ -86,10 +94,10 @@ private:
 
     // Everything down to decodingFinished is guarded by queueMutex.
     std::queue<std::vector<uint8_t>> audioQueue;
-    size_t queuedBytes = 0;       // what audioQueue holds
+    size_t queuedBytes = 0;
     uint64_t playedBytes = 0;     // song offset of the next packet the sender pops
-    uint64_t seekTicket = 0;      // incremented per real seek; the latest one wins
-    bool seekInFlight = false;    // the decoder hasn't applied it yet: its packets are stale
+    uint64_t seekTicket = 0;
+    bool seekInFlight = false;
     uint64_t bytesBeforeSeek = 0; // to restore the position if the seek fails
     size_t droppedForSeek = 0;
     SeekRequester seekRequester;  // set only while the decoder has a resampler open

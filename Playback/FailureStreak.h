@@ -1,8 +1,6 @@
 #pragma once
 
-// Tells a broken song from a broken network: one failure drops the song,
-// failures back to back keep it for a retry. Pure bookkeeping, like
-// VoiceDrainWatchdog - the caller feeds it outcomes, it says what to do.
+// Tells a broken song from a broken network. Pure bookkeeping.
 class FailureStreak
 {
 public:

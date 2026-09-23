@@ -25,10 +25,25 @@ class SongPlayer;
 
 struct PlaylistEntry; // WindowsProcessRunner.h
 
-// Owns the song queue, the loop policy and the voice session. A persistent
-// worker thread hands queued songs to SongPlayer one after another, while
-// ResolverWorker prefetches the next few. Commands stay thin and only talk
-// to this interface.
+// Owns the song queue, the loop policy and the voice session.
+// =======================================================
+// Rules:
+// - No dpp call under stateMutex. The voice-client lookup is the one
+//   exception: it runs under it, may look things up in dpp, and must not
+//   call back into this controller.
+// - skip() and stop() only end the song and never touch the voice client:
+//   play() flushes it once its sender is joined.
+// - songPlayer->arm() goes in the critical section that pops the song and
+//   sets songInProgress, so a skip/stop that sees the song as in progress
+//   always reaches it - even before play().
+// - stop() waits, bounded, until the worker has joined the song threads, so
+//   a caller about to switch channels can let dpp destroy the old voice
+//   client.
+// - After a lost session the song's client may already be destroyed: the
+//   rejoin uses the ids taken at the pop, while it was known-good.
+// - Wherever nothing is left to play, the idle clock starts and the failure
+//   streak ends: with the clock at 0 the idle timer never leaves the channel.
+// =======================================================
 class PlaybackController
 {
 public:
@@ -41,7 +56,7 @@ public:
     struct QueueSnapshot
     {
         std::string current;              // title (or url) of the playing song, empty when idle
-        std::vector<std::string> queued;  // urls waiting in the queue
+        std::vector<std::string> queued;  // titles (or urls) of the waiting songs
         LoopMode loop{LoopMode::Off};
     };
 
@@ -94,7 +109,7 @@ public:
 
     bool isPaused();
 
-    // Sets the loop mode. Persists until changed or /stop turns it Off.
+    // Persists until changed or /stop turns it Off.
     void setLoopMode(LoopMode mode);
 
     struct SeekResult
@@ -118,8 +133,6 @@ public:
     // Asked before every song which voice client the shard holds for the
     // guild right now (nullptr when none is ready): dpp may have replaced
     // ours while nothing was playing. Set it before playback starts.
-    // Invoked under stateMutex: it may look things up in dpp and must not
-    // call back into this controller.
     using VoiceClientLookup = std::function<dpp::discord_voice_client *(uint64_t guildId)>;
     void setVoiceClientLookup(VoiceClientLookup lookup);
 
@@ -137,7 +150,7 @@ public:
 private:
 
 
-    // Bookkeeping shared by every enqueue. Call with stateMutex held.
+    // Call with stateMutex held.
     void noteRequest(const dpp::slashcommand_t &event);
     bool isSongPlaying();
 
