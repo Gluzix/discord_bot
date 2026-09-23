@@ -34,14 +34,16 @@ A few behaviours worth knowing:
 slash command ──► Commands/*Command ──► PlaybackController
                                              │  song queue + worker thread
                         yt-dlp (process) ◄───┤  resolver thread: title + direct url
-                                             ▼
-                                      PcmResampler (FFmpeg) ──► PCM packets ──► sender thread ──► DPP ──► Discord
+                                             ▼  SongPlayer: one song at a time
+                      decoder thread: PcmResampler (FFmpeg) ──► PcmBuffer ──► sender thread ──► DPP ──► Discord
 ```
 
 - `Commands/` holds one small class per slash command. `CommandHandler` wires them up, registers them with Discord, and owns the idle timer.
-- `PlaybackController` owns the queue and the threads. A persistent worker plays songs one after another; a resolver thread runs yt-dlp ahead of time so the next song starts without a pause.
+- `PlaybackController` owns the queue and the worker thread, which hands songs to `SongPlayer` one after another; `ResolverWorker` runs yt-dlp ahead of time on its own thread so the next song starts without a pause.
+- `SongPlayer` commands one song. `DecoderWorker` resolves, announces and decodes it on one thread, `SenderWorker` paces the packets into the voice client on another, and `PcmBuffer` sits between them: the bounded PCM queue plus the seek handshake.
 - `PcmResampler` turns a media URL into 48 kHz 16-bit stereo PCM using FFmpeg, in packets of exactly the size DPP wants. It knows nothing about threads or Discord.
 - `WindowsProcessRunner` runs yt-dlp and parses its output. `VoiceConnector` handles joining channels and the audience rule. `Labels` and `Messages` hold every string the user sees.
+- `VoiceDrainWatchdog` spots a voice client that stopped draining, and `VoiceRejoiner` replaces a lost voice session by leaving and rejoining the channel. `FailureStreak` tells a broken song from a broken network: one failure drops the song, failures back to back keep it for a retry.
 
 ## Requirements
 
