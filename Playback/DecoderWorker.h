@@ -1,9 +1,8 @@
 #pragma once
 
-#include "Song.h"
 #include "PcmBuffer.h"
 #include "PcmResampler.h"
-#include "WindowsProcessRunner.h"
+#include "Song.h"
 
 #include <functional>
 #include <string>
@@ -12,6 +11,8 @@
 namespace dpp {
 struct message;
 }
+
+struct ResolvedMedia;
 
 // Resolves, announces and decodes one song into the buffer's producer side.
 class DecoderWorker
@@ -34,9 +35,10 @@ private:
     void run();
     void notifyUser(dpp::message msg);
     void fail(const char *msg);
-    ResolvedMedia computeResolveMedia();
-    void innerRun();
+    ResolvedMedia mediaToPlay();
+    void decode();
 
+    PcmResampler resampler;
     PcmBuffer &buffer;
     Song &song;
     std::function<void(std::string)> onLabelResolved;
@@ -47,5 +49,4 @@ private:
 
     std::thread thread; // started in the ctor, joined by join() or the dtor
 
-    PcmResampler resampler;
 };

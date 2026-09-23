@@ -1,21 +1,23 @@
 #include "DecoderWorker.h"
-#include "Messages.h"
 #include "Labels.h"
-#include "PlaybackButtons.h"
 #include "Log.h"
+#include "Messages.h"
+#include "PlaybackButtons.h"
+#include "WindowsProcessRunner.h"
 
-#include <dpp/dpp.h>
 #include <QDebug>
 
 #include <ctime>
 
-const int64_t FRESH_FOR_SECONDS = 3600;
+#include <dpp/dpp.h>
+
+constexpr int64_t FRESH_FOR_SECONDS = 3600;
 
 DecoderWorker::DecoderWorker(PcmBuffer &buffer_, Song &song_, std::function<void(std::string)> onLabelResolved_)
-    : buffer(buffer_)
+    : resampler(dpp::send_audio_raw_max_length)
+    , buffer(buffer_)
     , song(song_)
     , onLabelResolved(std::move(onLabelResolved_))
-    , resampler(dpp::send_audio_raw_max_length)
 {
     thread = std::thread(&DecoderWorker::run, this);
 }
@@ -51,7 +53,7 @@ void DecoderWorker::run()
         return;
     }
 
-    ResolvedMedia media = computeResolveMedia();
+    ResolvedMedia media = mediaToPlay();
 
     // A cancelled resolve comes back empty too - check the skip first so it
     // isn't reported as an error.
@@ -91,7 +93,7 @@ void DecoderWorker::run()
         notifyUser(nowPlaying);
     }
 
-    innerRun();
+    decode();
 }
 
 // A queued song announces itself in a fresh channel message, leaving its
@@ -120,7 +122,7 @@ void DecoderWorker::fail(const char *msg)
     }
 }
 
-ResolvedMedia DecoderWorker::computeResolveMedia()
+ResolvedMedia DecoderWorker::mediaToPlay()
 {
     ResolvedMedia media;
 
@@ -149,7 +151,7 @@ ResolvedMedia DecoderWorker::computeResolveMedia()
     return media;
 }
 
-void DecoderWorker::innerRun()
+void DecoderWorker::decode()
 {
     auto sink = [this](std::vector<uint8_t> pkt) {
         buffer.push(std::move(pkt));
@@ -169,9 +171,10 @@ void DecoderWorker::innerRun()
     // A rewind re-runs a stream that is already gone - say it once per song.
     bool streamLostAnnounced = false;
 
+    dpp::slashcommand_t &event = *song.event;
+
     // The decoder has to outlive end of stream: it runs a minute ahead, so
     // otherwise the last minute of every song couldn't be rewound.
-    dpp::slashcommand_t &event = *song.event;
     for (;;) {
         const PcmResampler::RunEnd runEnd = resampler.run(sink, [this] { return buffer.running(); }, onSeeked);
         if (runEnd == PcmResampler::RunEnd::ReadError && !streamLostAnnounced) {
@@ -189,5 +192,5 @@ void DecoderWorker::innerRun()
         }
     }
 
-    buffer.clearSeekRequester(); // it must not outlive the resampler below
+    buffer.clearSeekRequester(); // it must not outlive the resampler
 }
