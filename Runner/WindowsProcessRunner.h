@@ -61,8 +61,6 @@ private:
     static const int PIPE_BUFFER_BYTES = 64 * 1024;
     static const int POLL_INTERVAL_MS = 50;
     static const int YT_DLP_TIMEOUT_SECONDS = 60;
-    static const std::string YT_DLP;
-    static const std::string YT_DLP_PATH;
     static const std::string YT_DLP_SONG_ARGS;
     static const std::string YT_DLP_SEARCH_ARGS;
     static const std::string SEARCH_PREFIX;
