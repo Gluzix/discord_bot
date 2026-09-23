@@ -101,6 +101,8 @@ The codebase carries a few hard-won rules that are easy to break by accident:
 - Never call into DPP while holding one of the bot's own mutexes, and never touch the voice client from a thread other than the one that owns it at that moment.
 - Bugs that live in DPP itself are documented in commit messages and worked around in this repo, not patched in DPP.
 
+Rules that belong to one class live in a rules block at the top of its header.
+
 ## Known limitations
 
 - One voice session at a time. The bot is built for a single server.
