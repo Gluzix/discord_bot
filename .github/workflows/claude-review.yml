@@ -58,4 +58,4 @@ jobs:
             Keep it concise and specific, cite files and lines. If nothing is seriously wrong, say so briefly.
           claude_args: |
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git diff:*),Bash(git log:*),Read,Grep"
-            --model claude-haiku-4-5-20251001
+            --model claude-sonnet-5
