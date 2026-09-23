@@ -12,6 +12,8 @@
 // and hold the deep buffer here as PCM, which no rekey can spoil.
 constexpr float MAX_BUFFERED_SECONDS = 1.0f;
 
+// Ten seconds is far outside anything healthy and leaves dpp's own retry
+// chain time to finish or die first.
 constexpr std::chrono::seconds VOICE_DEAD_AFTER(10);
 constexpr std::chrono::milliseconds PACING_WAIT_MS(100);
 
@@ -44,8 +46,6 @@ void SenderWorker::run()
 {
     logging::nameThisThread("sender");
 
-    // The decoder fills the queue with ready-to-send packets of exactly
-    // dpp::send_audio_raw_max_length bytes; only the final one may be shorter.
     while (buffer.running()) {
         PcmBuffer::Next taken = buffer.next();
         if (taken.kind == PcmBuffer::Next::Kind::Stopped || taken.kind == PcmBuffer::Next::Kind::Ended) {
@@ -63,11 +63,11 @@ void SenderWorker::run()
         waitForClientToDrain();
 
         if (lost) {
-            buffer.stop(); // a decoder waiting on a full queue has nobody else to wake it
+            buffer.stop();
         }
         if (!buffer.running()) break;
         if (flushNow) {
-            // The packet in hand is from before the jump - drop it.
+            // The packet in hand is from before the jump.
             if (!flushClientNow()) break;
             continue;
         }
@@ -81,14 +81,11 @@ void SenderWorker::run()
         watchdog.reset();
     }
 
-    // Not a plain store: the decoder waits inside the buffer until the song ends.
     buffer.stop();
 }
 
-// This thread owns the client, so it is the one that may flush it.
 bool SenderWorker::flushClientNow()
 {
-    // dpp sets terminating at least 100ms before it destroys the client.
     if (voiceClient->terminating) {
         lost = true;
         buffer.stop();
@@ -100,8 +97,6 @@ bool SenderWorker::flushClientNow()
 
 void SenderWorker::waitForClientToDrain()
 {
-    // Never call into dpp while holding the buffer's mutex - a foreign lock
-    // inside our critical section is how the whole pipeline wedges.
     while (buffer.running()) {
         if (voiceClient->terminating) {
             lost = true;

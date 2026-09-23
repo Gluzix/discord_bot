@@ -2,8 +2,7 @@
 
 #include <chrono>
 
-// Says when a voice client's send buffer has stopped draining. Pure
-// bookkeeping: the sender feeds it observations, it says when to give up.
+// Pure bookkeeping: says when a voice client's send buffer stopped draining.
 class VoiceDrainWatchdog
 {
 public:
@@ -11,8 +10,8 @@ public:
 
     explicit VoiceDrainWatchdog(std::chrono::milliseconds deadAfter_);
 
-    // One observation of the client's buffer. Returns true once the buffer
-    // has not shrunk for deadAfter. A paused client is not a dead one.
+    // Returns true once the buffer has not shrunk for deadAfter. A paused
+    // client is not a dead one.
     bool observe(float secsRemaining, bool paused, Clock::time_point now = Clock::now());
 
     // A packet went out: draining is proven, start over.

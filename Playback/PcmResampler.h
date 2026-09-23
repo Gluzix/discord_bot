@@ -16,8 +16,16 @@ struct SwrContext;
 
 class ChunkedSource;
 
-// Decodes one media url into 48kHz s16 stereo PCM, handed out as packets of
-// a fixed size. Knows nothing about threads, queues, or Discord.
+// Decodes one media url into fixed-size PCM packets; no threads, no Discord.
+// =======================================================
+// Rules:
+// - Every packet is exactly packetBytes, only the last of a run may be
+//   shorter: DPP drops the remainder of larger sends and silence-pads
+//   smaller ones (inaudible at end of stream), so run() enforces it at the
+//   single point of production.
+// - run() calls onSeeked with pendingSeekMutex released: a caller may
+//   requestSeek() under its own lock and take that same lock in onSeeked.
+// =======================================================
 class PcmResampler
 {
 public:
@@ -40,7 +48,6 @@ public:
     Result open(const std::string &directUrl);
 
     // Runs until the stream ends or keepGoing() turns false, and says which.
-    // Every packet is exactly packetBytes; only the last may be shorter.
     // Restartable: after it returned at end of stream, a new run() honours a
     // seek requested meanwhile and decodes again.
     RunEnd run(const PacketSink &sink, const std::function<bool()> &keepGoing, const SeekDone &onSeeked);
@@ -79,7 +86,6 @@ private:
     PendingSeek pendingSeek;
     std::mutex pendingSeekMutex;
 
-    // Accumulated across runs and reported once, in the destructor.
     std::chrono::steady_clock::duration readTime{};
     std::chrono::steady_clock::duration decodeTime{};
     // The sink blocks whenever the bounded PCM queue is full, which is most

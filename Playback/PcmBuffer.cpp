@@ -9,8 +9,6 @@ void PcmBuffer::arm()
 
 void PcmBuffer::stop()
 {
-    // isPlaying participates in queueCv wait predicates - flipping it while
-    // holding the mutex guarantees no waiter can miss the wakeup.
     {
         std::lock_guard<std::mutex> lock(queueMutex);
         isPlaying = false;
@@ -50,7 +48,7 @@ PcmBuffer::PushResult PcmBuffer::push(std::vector<uint8_t> packet)
         return PushResult::Stopped;
     }
     if (seekInFlight) {
-        return PushResult::Stale; // a packet from before the jump
+        return PushResult::Stale;
     }
     queuedBytes += packet.size();
     audioQueue.push(std::move(packet));
@@ -71,13 +69,13 @@ void PcmBuffer::markFinished()
 bool PcmBuffer::finishedAndWaitForRewind()
 {
     std::unique_lock<std::mutex> lock(queueMutex);
-    decodingFinished = true; // the sender may end the song once the queue drains
+    decodingFinished = true;
     queueCv.notify_all();
     queueCv.wait(lock, [this] { return seekInFlight || !isPlaying; });
     if (!isPlaying) {
         return false;
     }
-    decodingFinished = false; // a rewind after end of stream: decode again
+    decodingFinished = false;
     return true;
 }
 
@@ -103,7 +101,7 @@ void PcmBuffer::seekApplied(uint64_t ticket, bool ok)
 {
     std::unique_lock<std::mutex> lock(queueMutex);
     if (ticket != seekTicket) {
-        return; // an older seek: a newer one is still on its way
+        return;
     }
     seekInFlight = false;
     if (!ok) {
@@ -132,7 +130,6 @@ std::optional<PcmBuffer::Position> PcmBuffer::seek(double seconds, bool relative
         target = std::min(target, durationSeconds); // a target at the end just ends the song
     }
 
-    // A forward the queue already holds needs no decoder: drop whole packets.
     const double aheadSeconds = target - current;
     if (!seekInFlight && aheadSeconds > 0
         && aheadSeconds * BYTES_PER_SECOND <= static_cast<double>(queuedBytes)) {
@@ -155,7 +152,7 @@ std::optional<PcmBuffer::Position> PcmBuffer::seek(double seconds, bool relative
     droppedForSeek = queuedBytes;
     audioQueue = {};
     queuedBytes = 0;
-    seekInFlight = true;   // every packet still in the decoder is from before the jump
+    seekInFlight = true;
     decodingFinished = false;
     flushClient = true;
     ++seekTicket;
@@ -181,8 +178,8 @@ PcmBuffer::Next PcmBuffer::next()
         flushClient = false;
         return Next{Next::Kind::Flush, {}};
     }
-    if (audioQueue.empty()) { // so decoding is finished: nothing more is coming
-        songEnding = true;    // nothing left to seek in
+    if (audioQueue.empty()) {
+        songEnding = true;
         return Next{Next::Kind::Ended, {}};
     }
     Next taken{Next::Kind::Packet, std::move(audioQueue.front())};
@@ -190,7 +187,7 @@ PcmBuffer::Next PcmBuffer::next()
     queuedBytes -= taken.packet.size();
     playedBytes += taken.packet.size();
     lock.unlock();
-    queueCv.notify_one(); // room for the decoder
+    queueCv.notify_one();
     return taken;
 }
 

@@ -131,6 +131,6 @@ int64_t ChunkedSource::seek(int64_t offset, int whence)
     if (target < 0) {
         return AVERROR(EINVAL);
     }
-    position = target; // the next read fetches whatever chunk that lands in
+    position = target;
     return position;
 }

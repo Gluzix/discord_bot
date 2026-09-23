@@ -9,14 +9,6 @@
 #include <windows.h>
 #include <timeapi.h>
 
-// DPP 10.1.6+ verifies TLS certificates through OpenSSL, which has no default
-// CA store on Windows - without one, every connection fails with "Malformed
-// HTTP response". Point OpenSSL at the bundled Mozilla CA file (copied next
-// to the exe by the build).
-//
-// The twist: libcrypto is a release binary, so its getenv() reads the release
-// CRT's (ucrtbase.dll) environment cache - which a debug exe's _putenv_s
-// never touches. Set the variable inside that CRT instance directly.
 static bool environmentVariableIsSet(const char* name)
 {
     char* value = nullptr;
@@ -29,10 +21,16 @@ static bool environmentVariableIsSet(const char* name)
     return isSet;
 }
 
+// cacert.pem is copied next to the exe by the build (CMakeLists.txt).
+// DPP 10.1.6+ verifies TLS certificates through OpenSSL, which has no default
+// CA store on Windows - without one, every connection fails with "Malformed
+// HTTP response". libcrypto is a release binary, so its getenv() reads the
+// release CRT's (ucrtbase.dll) environment cache - which a debug exe's
+// _putenv_s never touches.
 static void pointOpenSslAtBundledCertificates()
 {
     if (environmentVariableIsSet("SSL_CERT_FILE")) {
-        return; // user configured their own bundle
+        return;
     }
 
     _putenv_s("SSL_CERT_FILE", "cacert.pem");
@@ -46,8 +44,7 @@ static void pointOpenSslAtBundledCertificates()
 }
 
 // Ctrl+C's default behavior is an instant ExitProcess - no destructors, no
-// thread joins, reported as a crash. This handler routes it into a clean
-// dpp shutdown instead: run() returns and everything unwinds normally.
+// thread joins, reported as a crash.
 static CtrlMainServer* activeServer = nullptr;
 
 static BOOL WINAPI consoleCtrlHandler(DWORD signalType)

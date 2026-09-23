@@ -12,6 +12,12 @@ class ICommand;
 class PlaybackController;
 
 // Takes every click on a "Playing:" button to the command behind it.
+// =======================================================
+// Rules:
+// - handle() does no playback work: the command behind the button does, in
+//   its execute(), audience check included. It only asks
+//   playback->isPaused(), to turn play/pause into pause or resume.
+// =======================================================
 class ButtonRouter
 {
 public:
@@ -21,6 +27,5 @@ public:
 
 private:
     const std::unordered_map<std::string, std::unique_ptr<ICommand>> &commands;
-    // Only asked whether a song is paused; the commands do the playback work.
     std::shared_ptr<PlaybackController> playback;
 };

@@ -159,20 +159,17 @@ bool PcmResampler::frameEndsBy(const AVFrame *frame, double seconds) const
 
 PcmResampler::RunEnd PcmResampler::run(const PacketSink &sink, const std::function<bool()> &keepGoing, const SeekDone &onSeeked)
 {
-    Q_ASSERT(sink && keepGoing); // callers must wire both
+    Q_ASSERT(sink && keepGoing);
     if (!sink || !keepGoing) {
         return RunEnd::Stopped;
     }
     if (!keepGoing()) {
-        return RunEnd::Stopped; // skip or stop landed between open() and run()
+        return RunEnd::Stopped;
     }
 
     AVPacket *packet = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
 
-    // Packets are exactly packetBytes. DPP drops the remainder of larger
-    // sends and silence-pads smaller ones, so the invariant is enforced
-    // here, at the single point of production.
     const size_t BYTES_PER_SAMPLE_PAIR = 4; // s16 stereo
     std::vector<uint8_t> staging;
 
@@ -198,7 +195,7 @@ PcmResampler::RunEnd PcmResampler::run(const PacketSink &sink, const std::functi
     };
 
     // A container seek lands on the cue at or before the target, which can be
-    // seconds early; while this is set, frames up to the target are dropped.
+    // seconds early.
     double skipUntilSeconds = -1.0;
 
     auto applyPendingSeek = [&]() {
@@ -272,8 +269,6 @@ PcmResampler::RunEnd PcmResampler::run(const PacketSink &sink, const std::functi
         av_packet_unref(packet);
     }
 
-    // Drain the resampler; only this last packet may be shorter than
-    // packetBytes - DPP silence-pads it, inaudible at end of stream.
     auto drainStart = std::chrono::steady_clock::now();
     convertIntoStaging(nullptr, 0);
     pushFullPackets();

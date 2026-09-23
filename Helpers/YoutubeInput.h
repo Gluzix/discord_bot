@@ -2,9 +2,13 @@
 
 #include <string>
 
-// User input ends up on a yt-dlp command line. These checks keep it to plain
-// YouTube links and tame search text, so nothing can break out of the quoted
-// argument or inject extra arguments.
+// Checks what users type before it reaches yt-dlp.
+// =======================================================
+// Rules:
+// - User input ends up on a yt-dlp command line: isAllowedUrl() keeps it to
+//   plain YouTube links and isReasonableSearchQuery() to tame search text, so
+//   nothing can break out of the quoted argument or inject extra arguments.
+// =======================================================
 namespace youtube {
 
 bool isAllowedUrl(const std::string &url);

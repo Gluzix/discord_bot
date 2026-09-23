@@ -7,6 +7,13 @@ namespace dpp {
 struct interaction_create_t;
 }
 
+// Answers slash commands and button clicks from one place.
+// =======================================================
+// Rules:
+// - isClick(), behind reply() and refuse(), counts every component
+//   interaction as a click, not only a button's - fine while buttons are the
+//   only components this bot sends.
+// =======================================================
 namespace interactions {
 
 // Discord drops an interaction 3 s after it was issued, so how much of that

@@ -11,6 +11,16 @@ struct interaction_create_t;
 
 class PlaybackController;
 
+// Base of the slash commands, with the guards they share.
+// =======================================================
+// Rules:
+// - The audience-loyalty rule: every playback-control command asks
+//   userMayControl(), so the user must be in the bot's channel (or the bot
+//   unconnected/alone).
+// - The summoning rule: /play, /playlist and /join ask userMaySummon(). While
+//   a session is active (playing or queued), only its audience may call the
+//   bot elsewhere; an idle bot follows anyone.
+// =======================================================
 class Command : public ICommand
 {
 public:
@@ -34,15 +44,11 @@ protected:
     // A command's result, answered through interactions::reply.
     static void reply(const dpp::interaction_create_t &event, const std::string &text);
 
-    // The audience-loyalty rule shared by every playback-control command:
-    // the user must be in the bot's channel (or the bot unconnected/alone).
     // Replies with the refusal and returns false when control is denied.
     bool userMayControl(const dpp::interaction_create_t &event, const char *refusalReply = messages::mustBeWithBot);
 
-    // The summoning rule for /play and /join: while a session is active
-    // (playing or queued), only its audience may call the bot elsewhere;
-    // an idle bot follows anyone. Replies with the busy-channel refusal
-    // (with a clickable channel mention) and returns false when denied.
+    // Replies with the busy-channel refusal (with a clickable channel
+    // mention) and returns false when denied.
     bool userMaySummon(const dpp::slashcommand_t &event, PlaybackController &playback);
 
     std::string cmdName{};

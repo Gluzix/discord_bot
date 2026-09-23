@@ -68,8 +68,6 @@ static std::wstring utf8ToWide(const std::string &text)
     return wide;
 }
 
-// yt-dlp sometimes ignores --encoding utf-8 and writes the ANSI code page
-// (cp1250 here); convert rather than hand Discord bytes it renders as U+FFFD.
 static std::string ensureUtf8(const std::string &text)
 {
     if (!text.empty() && !isValidUtf8(text)) {
@@ -106,8 +104,6 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     }
     SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
 
-    // A kill must also reach what yt-dlp spawns (the PyInstaller child
-    // interpreter, a JS runtime) - a job object takes down the whole tree.
     HANDLE job = CreateJobObjectW(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -119,8 +115,6 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     startupInfo.hStdOutput = writePipe;
     startupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
 
-    // The command line goes through CreateProcessW as UTF-16 - the A variant
-    // would mangle non-ASCII search queries through the ANSI code page.
     // Suspended until it is inside the job, so nothing can be spawned outside it.
     const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_SUSPENDED;
     PROCESS_INFORMATION processInfo{};
@@ -153,8 +147,6 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
         }
     };
 
-    // Polled, not blocked: a skip (cancelled) or a runaway extraction
-    // (deadline) has to be able to end the run at any moment.
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(YT_DLP_TIMEOUT_SECONDS);
     bool killed = false;
     for (;;) {
@@ -201,10 +193,6 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     return result;
 }
 
-// A band-name search often ranks the artist's channel first, and handing
-// that to "ytsearch1:" makes yt-dlp extract every upload on it (minutes,
-// with the title of the first and the url of the last). So pick the video
-// ourselves from a flat listing of the top results.
 std::string WindowsProcessRunner::firstVideoUrl(const std::string &query, const CancelCheck &cancelled)
 {
     YtDlpOutput run = runYtDlp(YT_DLP_SEARCH_ARGS + " \"ytsearch5:" + query + "\"", cancelled);
@@ -233,10 +221,6 @@ ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &target, cons
         }
     }
 
-    // The --print fields make yt-dlp emit the title, the page url and the
-    // direct media URL on consecutive lines, in one process. Without
-    // --encoding utf-8, yt-dlp writes pipe output in the ANSI code page
-    // (cp1250 here), which turns Polish titles into mojibake on Discord.
     YtDlpOutput run = runYtDlp(YT_DLP_SONG_ARGS + " \"" + url + "\"", cancelled);
     const std::vector<std::string> &lines = run.lines;
 

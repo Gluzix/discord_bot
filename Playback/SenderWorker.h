@@ -10,8 +10,25 @@ class discord_voice_client;
 }
 
 
-// Paces one song's PCM packets into the voice client: the only thread that
-// may touch the client. Every exit ends in buffer.stop().
+// Paces one song's PCM packets into the voice client.
+// =======================================================
+// Rules:
+// - Of the song's threads only this one, run(), touches the voice client;
+//   SongPlayer::play() touches it only after join().
+// - run(), flushClientNow() and waitForClientToDrain() check terminating
+//   before every client call: dpp sets it at least 100 ms before it deletes
+//   the client.
+// - A dropped voice session leaves dpp retrying forever with a send buffer
+//   that never drains again; the watchdog in waitForClientToDrain() turns
+//   that into voiceLost().
+// - No dpp call while the buffer's mutex is held, in any method - a foreign
+//   lock inside our critical section wedged the whole pipeline once.
+// - Every exit from run() ends in buffer.stop(): the decoder waits inside the
+//   buffer and nobody else wakes it.
+// - lost is written by run(), flushClientNow() and waitForClientToDrain(),
+//   and read by voiceLost() after join(): the join is the synchronisation
+//   point, so no lock is needed.
+// =======================================================
 class SenderWorker
 {
 public:
@@ -32,19 +49,13 @@ private:
     bool flushClientNow();
     void waitForClientToDrain();
 
-    // A dropped voice session leaves dpp retrying forever with a send buffer
-    // that never drains again. Ten seconds is far outside anything healthy
-    // and leaves dpp's own retry chain time to finish or die first.
     VoiceDrainWatchdog watchdog;
 
     PcmBuffer &buffer;
     dpp::discord_voice_client *voiceClient;
 
-    // Written by the thread, read after it joins - the join is the
-    // synchronisation point, so no lock is needed.
     bool lost = false;
-
     bool flushNow = false;
 
-    std::thread thread; // started in the ctor, joined by join() or the dtor
+    std::thread thread;
 };

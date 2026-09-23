@@ -22,17 +22,11 @@ void LeaveCommand::execute(const dpp::slashcommand_t &event)
         return;
     }
 
-    // Same policy as the rest of playback control: only the bot's audience
-    // may dismiss it - unless it sits in an empty room anyway.
     if (!userMayControl(event, messages::cannotLeave)) {
         return;
     }
 
-    // stop() joins the playback threads, so nothing of ours still touches
-    // the voice client when the disconnect destroys it.
     playback->stop();
-    // Before the disconnect: the state update it causes must not be taken
-    // for a rejoin's own leave, or the bot would come straight back.
     if (rejoiner) {
         rejoiner->cancel(event.command.guild_id);
     }
