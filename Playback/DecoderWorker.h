@@ -1,11 +1,18 @@
 #pragma once
 
-#include "Song.h"
 #include "PcmBuffer.h"
+#include "PcmResampler.h"
+#include "Song.h"
 
 #include <functional>
 #include <string>
 #include <thread>
+
+namespace dpp {
+struct message;
+}
+
+struct ResolvedMedia;
 
 // Resolves, announces and decodes one song into the buffer's producer side.
 class DecoderWorker
@@ -26,7 +33,12 @@ public:
 
 private:
     void run();
+    void notifyUser(dpp::message msg);
+    void fail(const char *msg);
+    ResolvedMedia mediaToPlay();
+    void decode();
 
+    PcmResampler resampler;
     PcmBuffer &buffer;
     Song &song;
     std::function<void(std::string)> onLabelResolved;
@@ -36,4 +48,5 @@ private:
     bool songFailed = false;
 
     std::thread thread; // started in the ctor, joined by join() or the dtor
+
 };

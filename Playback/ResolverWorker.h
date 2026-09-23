@@ -18,6 +18,8 @@ public:
 
 private:
     void run();
+    Song *nextUnresolved();
+    void resolveSongs(const uint64_t songId, const std::string &target);
 
     std::atomic<bool> running{true};
     std::deque<Song> &songQueue;
