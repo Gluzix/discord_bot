@@ -87,6 +87,18 @@ void CommandHandler::setupBot()
         rejoiner->rejoin(guildId, channelId);
     });
 
+    // The shard's registry is the only truth about which client is live.
+    playback->setVoiceClientLookup([bot = bot](uint64_t guildId) -> dpp::discord_voice_client * {
+        dpp::discord_client *shard = bot->get_shard(0);
+        dpp::voiceconn *vc = shard ? shard->get_voice(guildId) : nullptr;
+        // is_ready() only means the secret key arrived; it stays true all
+        // through dpp's teardown, so terminating is what rules a dying one out.
+        if (vc && vc->voiceclient && vc->voiceclient->is_ready() && !vc->voiceclient->terminating) {
+            return vc->voiceclient.get();
+        }
+        return nullptr;
+    });
+
     // Starts a /play that was waiting for the voice handshake to finish.
     bot->on_voice_ready([playback = playback, rejoiner = rejoiner](const dpp::voice_ready_t& event) {
         playback->onVoiceReady(event);

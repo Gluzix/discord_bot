@@ -93,12 +93,13 @@ void PlaybackController::noteRequest(const dpp::slashcommand_t &event)
     idleSinceSeconds = 0;
     lastTextChannelId = event.command.channel_id;
 
-    dpp::voiceconn* vc = event.from()->get_voice(event.command.guild_id);
-    if (vc && vc->voiceclient && vc->voiceclient->is_ready()) {
-        currentVoiceClient = vc->voiceclient.get();
-        // The session state must be whole again after a /stop zeroed it.
-        activeChannelId = static_cast<uint64_t>(currentVoiceClient->channel_id);
-        activeGuildId = static_cast<uint64_t>(currentVoiceClient->server_id);
+    if (voiceClientLookup) {
+        if (dpp::discord_voice_client *live = voiceClientLookup(static_cast<uint64_t>(event.command.guild_id))) {
+            currentVoiceClient = live;
+            // The session state must be whole again after a /stop zeroed it.
+            activeChannelId = static_cast<uint64_t>(live->channel_id);
+            activeGuildId = static_cast<uint64_t>(live->server_id);
+        }
     }
 }
 
@@ -268,6 +269,12 @@ void PlaybackController::setVoiceLostHandler(std::function<void(uint64_t, uint64
     voiceLostHandler = std::move(handler);
 }
 
+void PlaybackController::setVoiceClientLookup(VoiceClientLookup lookup)
+{
+    std::lock_guard<std::mutex> lock(stateMutex);
+    voiceClientLookup = std::move(lookup);
+}
+
 void PlaybackController::onVoiceReady(const dpp::voice_ready_t &event)
 {
     {
@@ -344,6 +351,12 @@ void PlaybackController::playbackWorker()
         // already be destroyed, and these are the ids a rejoin has to use.
         uint64_t songChannelId = 0;
         uint64_t songGuildId = 0;
+        // A client dpp destroyed while nothing played needs a new session
+        // before a song; asked for below, never under stateMutex.
+        bool clientGone = false;
+        std::function<void(uint64_t, uint64_t)> reportGone;
+        uint64_t goneGuildId = 0;
+        uint64_t goneChannelId = 0;
         {
             std::unique_lock<std::mutex> lock(stateMutex);
             // A front song the resolver is still on is left to it - popping
@@ -365,17 +378,46 @@ void PlaybackController::playbackWorker()
             if (!running) {
                 break;
             }
-            song = std::move(songQueue.front());
-            songQueue.pop_front();
-            voiceClient = currentVoiceClient;
-            songChannelId = static_cast<uint64_t>(voiceClient->channel_id);
-            songGuildId = static_cast<uint64_t>(voiceClient->server_id);
-            songInProgress = true;
-            // Armed in the same critical section, so a skip/stop that sees the
-            // song as in progress always reaches it - even before play().
-            songPlayer->arm();
-            idleSinceSeconds = 0;
-            currentSongLabel = labels::render(song.title, song.webpageUrl, song.target);
+            // dpp may have destroyed and replaced the client while nothing
+            // was playing - only the shard knows which one is live now.
+            if (voiceClientLookup) {
+                dpp::discord_voice_client *live = voiceClientLookup(activeGuildId);
+                if (live != currentVoiceClient) {
+                    currentVoiceClient = live;
+                    if (live == nullptr) {
+                        qWarning() << "Voice client is gone - asking for a new session before the next song";
+                        clientGone = true;
+                        reportGone = voiceLostHandler;
+                        goneGuildId = activeGuildId;
+                        goneChannelId = activeChannelId;
+                    } else {
+                        qWarning() << "Voice client was replaced under us - adopting the live one";
+                        activeChannelId = static_cast<uint64_t>(live->channel_id);
+                    }
+                }
+            }
+            if (!clientGone) {
+                song = std::move(songQueue.front());
+                songQueue.pop_front();
+                voiceClient = currentVoiceClient;
+                songChannelId = static_cast<uint64_t>(voiceClient->channel_id);
+                songGuildId = static_cast<uint64_t>(voiceClient->server_id);
+                songInProgress = true;
+                // Armed in the same critical section, so a skip/stop that sees the
+                // song as in progress always reaches it - even before play().
+                songPlayer->arm();
+                idleSinceSeconds = 0;
+                currentSongLabel = labels::render(song.title, song.webpageUrl, song.target);
+            }
+        }
+
+        // The song stayed at the front of the queue; the rejoin brings a
+        // session back, and onVoiceReady wakes the wait above.
+        if (clientGone) {
+            if (reportGone) {
+                reportGone(goneGuildId, goneChannelId);
+            }
+            continue;
         }
 
         // Shutdown can begin between the pop above and here; don't start a
