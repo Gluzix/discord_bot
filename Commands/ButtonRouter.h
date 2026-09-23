@@ -14,9 +14,9 @@ class PlaybackController;
 // Takes every click on a "Playing:" button to the command behind it.
 // =======================================================
 // Rules:
-// - The router does no playback work: the command behind the button does,
-//   audience check included. playback is only asked whether a song is
-//   paused, to turn play/pause into pause or resume.
+// - handle() does no playback work: the command behind the button does, in
+//   its execute(), audience check included. It only asks
+//   playback->isPaused(), to turn play/pause into pause or resume.
 // =======================================================
 class ButtonRouter
 {

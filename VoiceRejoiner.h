@@ -13,18 +13,19 @@ class cluster;
 // Re-establishes a voice connection dpp gave up on by leaving and rejoining.
 // =======================================================
 // Rules:
-// - Leaving first is what makes this work: connect_voice does nothing while
-//   dpp still holds a voiceconn for the guild, and the new session goes
-//   through IDENTIFY (works) instead of RESUME (dpp 10.1.6 never gets past
-//   it).
+// - Leaving first, through leave() from rejoin() and tick(), is what makes
+//   this work: connect_voice does nothing while dpp still holds a voiceconn
+//   for the guild, and the new session goes through IDENTIFY (works) instead
+//   of RESUME (dpp 10.1.6 never gets past it).
 // - The leave and the join are separate phases: dpp erases the guild's
 //   voiceconn when Discord confirms the leave, and a join sent earlier dies
-//   with it.
-// - Channel 0 is refused: joining channel 0 is a leave, and a recovery must
-//   never become one.
-// - dpp is called with no lock held: its voice teardown is slow and its
-//   events come back on other threads.
-// - Held by a shared_ptr: the leave timeout runs on a dpp timer thread.
+//   with it (leave(), then onBotLeft() or onLeaveTimeout()).
+// - rejoin() refuses channel 0: joining channel 0 is a leave, and a recovery
+//   must never become one.
+// - dpp is called with no lock held, in every method: its voice teardown is
+//   slow and its events come back on other threads.
+// - Held by a shared_ptr made in CommandHandler::prepare():
+//   armLeaveTimeout()'s leave timeout runs on a dpp timer thread.
 // =======================================================
 class VoiceRejoiner : public std::enable_shared_from_this<VoiceRejoiner>
 {

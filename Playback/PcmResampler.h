@@ -23,7 +23,7 @@ class ChunkedSource;
 //   shorter: DPP drops the remainder of larger sends and silence-pads
 //   smaller ones (inaudible at end of stream), so run() enforces it at the
 //   single point of production.
-// - onSeeked is called with pendingSeekMutex released: a caller may
+// - run() calls onSeeked with pendingSeekMutex released: a caller may
 //   requestSeek() under its own lock and take that same lock in onSeeked.
 // =======================================================
 class PcmResampler

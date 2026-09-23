@@ -16,11 +16,11 @@ class discord_voice_client;
 // Rules:
 // - play() joins the sender first: after that no song thread is on the voice
 //   client, so play() is the one place that may call it after a song.
-// - Those client calls come before the decoder join: a decoder stuck in
-//   yt-dlp can outlive stop()'s bounded wait, and past that the client may
-//   be gone.
-// - After VoiceLost not one client call more, not even is_paused(): dpp may
-//   already have destroyed the client it gave up on.
+// - In play(), those client calls come before decoder.join(): a decoder stuck
+//   in yt-dlp can outlive PlaybackController::stop()'s bounded wait, and past
+//   that the client may be gone.
+// - After VoiceLost not one client call more in play(), not even is_paused():
+//   dpp may already have destroyed the client it gave up on.
 // =======================================================
 class SongPlayer
 {

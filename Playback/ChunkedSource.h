@@ -11,10 +11,10 @@ struct AVDictionary;
 // Rules:
 // - googlevideo serves an open-ended read at about twice the audio bitrate
 //   but a bounded range at full speed (the reason yt-dlp downloads in
-//   chunks), so every fetch is one complete bounded request.
-// - FFmpeg's own reconnect option is not used: it treats the end of a
-//   bounded range as a premature end (it knows the whole file's size) and
-//   burns seconds retrying, so a short chunk is retried here instead.
+//   chunks), so every fetch is one complete bounded request (fetchChunkAt()).
+// - FFmpeg's own reconnect option is not used: it treats the end of a bounded
+//   range as a premature end (it knows the whole file's size) and burns
+//   seconds retrying, so a short chunk is retried in fetchChunkAt() instead.
 // =======================================================
 class ChunkedSource
 {

@@ -16,13 +16,13 @@
 // Rules:
 // - Only stop() sets isPlaying false, and it does so under queueMutex: the
 //   flag is in the queueCv predicates, so no waiter can miss the wakeup.
-// - reset() leaves isPlaying alone: arm() comes before play(), and a stop()
-//   in between must still end the song.
-// - The seek requester runs under queueMutex, so it must not take a lock the
-//   decoder holds while it pushes: the order is queueMutex, then the
-//   resampler's pendingSeekMutex.
-// - From a real seek until seekApplied() arrives with the newest ticket,
-//   seekInFlight holds and every push is Stale: the packets still in the
+// - reset() leaves isPlaying alone: arm() comes before SongPlayer::play(),
+//   and a stop() in between must still end the song.
+// - The seek requester runs under queueMutex in seek(), so it must not take a
+//   lock the decoder holds while it calls push(): the order is queueMutex,
+//   then the resampler's pendingSeekMutex.
+// - From a real seek() until seekApplied() arrives with the newest ticket,
+//   seekInFlight holds and every push() is Stale: the packets still in the
 //   decoder are from before the jump.
 // =======================================================
 class PcmBuffer

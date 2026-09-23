@@ -27,20 +27,23 @@ struct PlaylistListing
 // Runs yt-dlp and parses its output.
 // =======================================================
 // Rules:
-// - Every run is put in a job object: a kill must also reach what yt-dlp
-//   spawns (the PyInstaller child interpreter, a JS runtime).
-// - Every run is bounded: the pipe is polled with PeekNamedPipe, never read
-//   blocking, so a cancel or YT_DLP_TIMEOUT_SECONDS can end it at any moment.
-// - The command line goes through CreateProcessW as UTF-16: the A variant
-//   would mangle non-ASCII search queries through the ANSI code page.
+// - runYtDlp() puts every run in a job object: a kill must also reach what
+//   yt-dlp spawns (the PyInstaller child interpreter, a JS runtime).
+// - runYtDlp() bounds every run: the pipe is polled with PeekNamedPipe, never
+//   read blocking, so a cancel or YT_DLP_TIMEOUT_SECONDS can end it at any
+//   moment.
+// - In runYtDlp(), the command line goes through CreateProcessW as UTF-16:
+//   the A variant would mangle non-ASCII search queries through the ANSI code
+//   page.
 // - yt-dlp writes piped output in the ANSI code page (cp1250 here) without
 //   --encoding utf-8, and sometimes even with it, which Discord shows as
-//   mojibake: every run passes the flag and every title goes through
-//   ensureUtf8().
+//   mojibake: every runYtDlp() caller passes the flag, and resolveMedia() and
+//   listPlaylist() put every title through ensureUtf8().
 // - A band-name search often ranks the artist's channel first, and handing
 //   that to "ytsearch1:" makes yt-dlp extract every upload on it (minutes,
 //   with the title of the first and the url of the last) - so a search picks
-//   the first plain video from a flat listing instead.
+//   the first plain video from a flat listing instead (resolveMedia(),
+//   firstVideoUrl()).
 // =======================================================
 class WindowsProcessRunner
 {

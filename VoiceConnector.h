@@ -17,12 +17,13 @@ inline constexpr bool SELF_DEAF = true;
 // Voice-channel join logic shared by the commands; pure logic, no replies.
 // =======================================================
 // Rules:
-// - A move connects straight to the new channel, never disconnect first:
-//   dpp replaces the voiceconn, and a disconnect+connect races the gateway -
-//   the disconnect's ack tears down the new connection and voice_ready never
-//   fires.
+// - A move connects straight to the new channel in ensureJoined(), never
+//   disconnect first: dpp replaces the voiceconn, and a disconnect+connect
+//   races the gateway - the disconnect's ack tears down the new connection
+//   and voice_ready never fires.
 // - The switch still destroys the old voice client, so playback, whose
-//   threads hold a pointer to it, stops first.
+//   threads hold a pointer to it, stops first (playback->stop() in
+//   ensureJoined()).
 // =======================================================
 class VoiceConnector
 {

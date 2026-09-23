@@ -17,19 +17,19 @@ struct ResolvedMedia;
 // Resolves, announces and decodes one song into the buffer's producer side.
 // =======================================================
 // Rules:
-// - Every exit marks decoding finished: the sender waits on the queue and
-//   must be released.
-// - A stop is checked before yt-dlp, after the resolve and before the
-//   announcement: a song stopped early never launches yt-dlp, a cancelled
+// - Every exit from run() ends in buffer.markFinished(): the sender waits on
+//   the queue and must be released.
+// - A stop is checked in run() before yt-dlp, after the resolve and before
+//   the announcement: a song stopped early never launches yt-dlp, a cancelled
 //   resolve (empty too) is no error, and a stop during "Looking for your
 //   song..." never announces.
-// - The seek requester is set only after open(), the duration first (it
-//   clamps a seek), and cleared before the resampler dies.
-// - The decoder outlives end of stream, waiting for a rewind: it runs a
-//   minute ahead, so otherwise the last minute of every song couldn't be
-//   rewound.
-// - songFailed is written by the thread and read after join(): the join is
-//   the synchronisation point, so no lock is needed.
+// - The seek requester is set in decode() only after resampler.open(), the
+//   duration first (it clamps a seek), and cleared before the resampler dies.
+// - decode() outlives end of stream, waiting for a rewind in
+//   buffer.finishedAndWaitForRewind(): the decoder runs a minute ahead, so
+//   otherwise the last minute of every song couldn't be rewound.
+// - songFailed is written by fail() on the thread and read by failed() after
+//   join(): the join is the synchronisation point, so no lock is needed.
 // =======================================================
 class DecoderWorker
 {

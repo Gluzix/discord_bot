@@ -11,12 +11,12 @@
 // Resolves the next few queued songs ahead of time, on its own thread.
 // =======================================================
 // Rules:
-// - The queue, cv and mutex are PlaybackController's: every queue access,
-//   nextUnresolved() included, holds stateMutex.
-// - yt-dlp runs with stateMutex dropped and the queue may change meanwhile,
-//   so a result is written back by song id.
-// - The "Queued at position N" edit goes out once stateMutex is dropped:
-//   no dpp call under it.
+// - The queue, cv and mutex are PlaybackController's: every queue access in
+//   run() and resolveSongs(), nextUnresolved() included, holds stateMutex.
+// - resolveSongs() runs yt-dlp with stateMutex dropped and the queue may
+//   change meanwhile, so a result is written back by song id.
+// - The "Queued at position N" edit in resolveSongs() goes out once
+//   stateMutex is dropped: no dpp call under it.
 // =======================================================
 class ResolverWorker
 {

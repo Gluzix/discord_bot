@@ -28,22 +28,24 @@ struct PlaylistEntry; // WindowsProcessRunner.h
 // Owns the song queue, the loop policy and the voice session.
 // =======================================================
 // Rules:
-// - No dpp call under stateMutex. The voice-client lookup is the one
-//   exception: it runs under it, may look things up in dpp, and must not
-//   call back into this controller.
+// - No dpp call under stateMutex, in any method. The voice-client lookup is
+//   the one exception: it runs under it in noteRequest() and
+//   playbackWorker(), may look things up in dpp, and must not call back into
+//   this controller.
 // - skip() and stop() only end the song and never touch the voice client:
 //   SongPlayer::play() flushes it once its sender is joined.
-// - songPlayer->arm() goes in the critical section that pops the song and
-//   sets songInProgress, so a skip/stop that sees the song as in progress
-//   always reaches it - even before play().
-// - stop() waits, bounded, until the worker has joined the song threads, so
-//   a caller about to switch channels can let dpp destroy the old voice
-//   client.
+// - songPlayer->arm() goes in playbackWorker()'s critical section that pops
+//   the song and sets songInProgress, so a skip() or stop() that sees the
+//   song as in progress always reaches it - even before SongPlayer::play().
+// - stop() waits, bounded, until playbackWorker() has joined the song
+//   threads, so a caller about to switch channels can let dpp destroy the old
+//   voice client.
 // - After a lost session the song's client may already be destroyed: the
-//   rejoin uses the ids taken at the pop, while it was known-good.
+//   rejoin uses the ids playbackWorker() took at the pop, while it was
+//   known-good.
 // - Whenever a song ends with nothing left to play, the idle clock starts and
 //   the failure streak ends: with the clock at 0 the idle timer never leaves
-//   the channel.
+//   the channel (playbackWorker(), skip(), stop()).
 // =======================================================
 class PlaybackController
 {
