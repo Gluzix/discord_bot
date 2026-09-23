@@ -2,6 +2,7 @@
 
 #include "Song.h"
 #include "PcmBuffer.h"
+#include "PcmResampler.h"
 #include "WindowsProcessRunner.h"
 
 #include <functional>
@@ -33,8 +34,8 @@ private:
     void run();
     void notifyUser(dpp::message msg);
     void fail(const char *msg);
-
     ResolvedMedia computeResolveMedia();
+    void innerRun();
 
     PcmBuffer &buffer;
     Song &song;
@@ -45,4 +46,6 @@ private:
     bool songFailed = false;
 
     std::thread thread; // started in the ctor, joined by join() or the dtor
+
+    PcmResampler resampler;
 };

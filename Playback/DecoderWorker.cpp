@@ -1,5 +1,4 @@
 #include "DecoderWorker.h"
-#include "PcmResampler.h"
 #include "Messages.h"
 #include "Labels.h"
 #include "PlaybackButtons.h"
@@ -16,6 +15,7 @@ DecoderWorker::DecoderWorker(PcmBuffer &buffer_, Song &song_, std::function<void
     : buffer(buffer_)
     , song(song_)
     , onLabelResolved(std::move(onLabelResolved_))
+    , resampler(dpp::send_audio_raw_max_length)
 {
     thread = std::thread(&DecoderWorker::run, this);
 }
@@ -67,7 +67,6 @@ void DecoderWorker::run()
         onLabelResolved(labels::render(media.title, media.webpageUrl, song.target));
     }
 
-    PcmResampler resampler(dpp::send_audio_raw_max_length);
     switch (resampler.open(media.directUrl)) {
         case PcmResampler::Result::OpenFailed: fail(messages::errorOpenStream); return;
         case PcmResampler::Result::ReadFailed: fail(messages::errorReadStream); return;
@@ -92,46 +91,7 @@ void DecoderWorker::run()
         notifyUser(nowPlaying);
     }
 
-    auto sink = [this](std::vector<uint8_t> pkt) {
-        buffer.push(std::move(pkt));
-    };
-
-    auto onSeeked = [this](uint64_t ticket, bool ok) {
-        buffer.seekApplied(ticket, ok);
-    };
-
-    // The duration first: it clamps a seek, and a seek is possible the moment
-    // the requester is published.
-    buffer.setDuration(resampler.durationSeconds());
-    buffer.setSeekRequester([&resampler](double seconds, uint64_t ticket) {
-        resampler.requestSeek(seconds, ticket);
-    });
-
-    // A rewind re-runs a stream that is already gone - say it once per song.
-    bool streamLostAnnounced = false;
-
-    // The decoder has to outlive end of stream: it runs a minute ahead, so
-    // otherwise the last minute of every song couldn't be rewound.
-
-    dpp::slashcommand_t &event = *song.event;
-    for (;;) {
-        const PcmResampler::RunEnd runEnd = resampler.run(sink, [this] { return buffer.running(); }, onSeeked);
-        if (runEnd == PcmResampler::RunEnd::ReadError && !streamLostAnnounced) {
-            streamLostAnnounced = true;
-            qDebug() << "The audio stream died mid-song - telling the channel";
-            // Never an edit: the "Playing:" reply stays as history.
-            dpp::message lost(messages::streamLost);
-            lost.channel_id = event.command.channel_id;
-            lost.set_allowed_mentions();
-            event.owner->message_create(lost);
-        }
-
-        if (!buffer.finishedAndWaitForRewind()) {
-            break;
-        }
-    }
-
-    buffer.clearSeekRequester(); // it must not outlive the resampler below
+    innerRun();
 }
 
 // A queued song announces itself in a fresh channel message, leaving its
@@ -187,4 +147,47 @@ ResolvedMedia DecoderWorker::computeResolveMedia()
         }
     }
     return media;
+}
+
+void DecoderWorker::innerRun()
+{
+    auto sink = [this](std::vector<uint8_t> pkt) {
+        buffer.push(std::move(pkt));
+    };
+
+    auto onSeeked = [this](uint64_t ticket, bool ok) {
+        buffer.seekApplied(ticket, ok);
+    };
+
+    // The duration first: it clamps a seek, and a seek is possible the moment
+    // the requester is published.
+    buffer.setDuration(resampler.durationSeconds());
+    buffer.setSeekRequester([this](double seconds, uint64_t ticket) {
+        resampler.requestSeek(seconds, ticket);
+    });
+
+    // A rewind re-runs a stream that is already gone - say it once per song.
+    bool streamLostAnnounced = false;
+
+    // The decoder has to outlive end of stream: it runs a minute ahead, so
+    // otherwise the last minute of every song couldn't be rewound.
+    dpp::slashcommand_t &event = *song.event;
+    for (;;) {
+        const PcmResampler::RunEnd runEnd = resampler.run(sink, [this] { return buffer.running(); }, onSeeked);
+        if (runEnd == PcmResampler::RunEnd::ReadError && !streamLostAnnounced) {
+            streamLostAnnounced = true;
+            qDebug() << "The audio stream died mid-song - telling the channel";
+            // Never an edit: the "Playing:" reply stays as history.
+            dpp::message lost(messages::streamLost);
+            lost.channel_id = event.command.channel_id;
+            lost.set_allowed_mentions();
+            event.owner->message_create(lost);
+        }
+
+        if (!buffer.finishedAndWaitForRewind()) {
+            break;
+        }
+    }
+
+    buffer.clearSeekRequester(); // it must not outlive the resampler below
 }
