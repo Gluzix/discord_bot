@@ -116,6 +116,8 @@ public:
     // Asked before every song which voice client the shard holds for the
     // guild right now (nullptr when none is ready): dpp may have replaced
     // ours while nothing was playing. Set it before playback starts.
+    // Invoked under stateMutex: it may look things up in dpp and must not
+    // call back into this controller.
     using VoiceClientLookup = std::function<dpp::discord_voice_client *(uint64_t guildId)>;
     void setVoiceClientLookup(VoiceClientLookup lookup);
 
