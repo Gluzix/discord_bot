@@ -27,7 +27,7 @@ struct PlaylistListing
 // Runs yt-dlp and parses its output.
 // =======================================================
 // Rules:
-// - Every run lives in a job object: a kill must also reach what yt-dlp
+// - Every run is put in a job object: a kill must also reach what yt-dlp
 //   spawns (the PyInstaller child interpreter, a JS runtime).
 // - Every run is bounded: the pipe is polled with PeekNamedPipe, never read
 //   blocking, so a cancel or YT_DLP_TIMEOUT_SECONDS can end it at any moment.

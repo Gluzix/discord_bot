@@ -32,7 +32,7 @@ struct PlaylistEntry; // WindowsProcessRunner.h
 //   exception: it runs under it, may look things up in dpp, and must not
 //   call back into this controller.
 // - skip() and stop() only end the song and never touch the voice client:
-//   play() flushes it once its sender is joined.
+//   SongPlayer::play() flushes it once its sender is joined.
 // - songPlayer->arm() goes in the critical section that pops the song and
 //   sets songInProgress, so a skip/stop that sees the song as in progress
 //   always reaches it - even before play().
@@ -41,8 +41,9 @@ struct PlaylistEntry; // WindowsProcessRunner.h
 //   client.
 // - After a lost session the song's client may already be destroyed: the
 //   rejoin uses the ids taken at the pop, while it was known-good.
-// - Wherever nothing is left to play, the idle clock starts and the failure
-//   streak ends: with the clock at 0 the idle timer never leaves the channel.
+// - Whenever a song ends with nothing left to play, the idle clock starts and
+//   the failure streak ends: with the clock at 0 the idle timer never leaves
+//   the channel.
 // =======================================================
 class PlaybackController
 {

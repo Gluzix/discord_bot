@@ -21,9 +21,9 @@
 // - The seek requester runs under queueMutex, so it must not take a lock the
 //   decoder holds while it pushes: the order is queueMutex, then the
 //   resampler's pendingSeekMutex.
-// - From a seek the queue can't serve until seekApplied() brings the newest
-//   ticket, seekInFlight holds and every push is Stale: the packets still in
-//   the decoder are from before the jump.
+// - From a real seek until seekApplied() arrives with the newest ticket,
+//   seekInFlight holds and every push is Stale: the packets still in the
+//   decoder are from before the jump.
 // =======================================================
 class PcmBuffer
 {

@@ -21,6 +21,7 @@ static bool environmentVariableIsSet(const char* name)
     return isSet;
 }
 
+// cacert.pem is copied next to the exe by the build (CMakeLists.txt).
 // DPP 10.1.6+ verifies TLS certificates through OpenSSL, which has no default
 // CA store on Windows - without one, every connection fails with "Malformed
 // HTTP response". libcrypto is a release binary, so its getenv() reads the
