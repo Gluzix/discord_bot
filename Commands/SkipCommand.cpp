@@ -25,22 +25,32 @@ dpp::slashcommand SkipCommand::definition(dpp::snowflake botId) const
 
 void SkipCommand::execute(const dpp::slashcommand_t &event)
 {
-    if (!userMayControl(event)) {
-        return;
-    }
-
     int64_t count = 1;
     auto countParameter = event.get_parameter("count");
     if (std::holds_alternative<int64_t>(countParameter)) {
         count = std::clamp<int64_t>(std::get<int64_t>(countParameter), 1, 100);
     }
 
-    size_t skipped = playback->skip(static_cast<size_t>(count));
+    run(event, static_cast<size_t>(count));
+}
+
+void SkipCommand::execute(const dpp::button_click_t &event, const std::string &)
+{
+    run(event, 1);
+}
+
+void SkipCommand::run(const dpp::interaction_create_t &event, size_t count)
+{
+    if (!userMayControl(event)) {
+        return;
+    }
+
+    size_t skipped = playback->skip(count);
     if (skipped == 0) {
-        event.reply(messages::nothingPlaying);
+        reply(event, messages::nothingPlaying);
     } else if (skipped == 1) {
-        event.reply(messages::skipped);
+        reply(event, messages::skipped);
     } else {
-        event.reply(messages::skippedManyPrefix + std::to_string(skipped) + messages::skippedManySuffix);
+        reply(event, messages::skippedManyPrefix + std::to_string(skipped) + messages::skippedManySuffix);
     }
 }

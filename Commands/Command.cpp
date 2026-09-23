@@ -1,6 +1,7 @@
 #include "Command.h"
 #include "VoiceConnector.h"
 #include "PlaybackController.h"
+#include "Interactions.h"
 
 #include <dpp/dpp.h>
 
@@ -31,11 +32,21 @@ void Command::execute(const dpp::slashcommand_t &event)
     event.reply(cmdDescription);
 }
 
-bool Command::userMayControl(const dpp::slashcommand_t &event, const char *refusalReply)
+void Command::execute(const dpp::button_click_t &event, const std::string &)
+{
+    interactions::refuse(event, messages::unknownButton);
+}
+
+void Command::reply(const dpp::interaction_create_t &event, const std::string &text)
+{
+    interactions::reply(event, text);
+}
+
+bool Command::userMayControl(const dpp::interaction_create_t &event, const char *refusalReply)
 {
     dpp::voiceconn* currentVoiceChannel = event.from()->get_voice(event.command.guild_id);
     if (currentVoiceChannel && !VoiceConnector::userInBotChannel(event) && !VoiceConnector::botIsAloneInChannel(event)) {
-        event.reply(refusalReply);
+        interactions::refuse(event, refusalReply);
         return false;
     }
     return true;

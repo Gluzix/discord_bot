@@ -5,6 +5,7 @@
 #include <dpp/dpp.h>
 
 #include <algorithm>
+#include <charconv>
 
 RewindCommand::RewindCommand(std::shared_ptr<PlaybackController> playback_)
     : Command("rewind", "jump back in the current song")
@@ -25,23 +26,36 @@ dpp::slashcommand RewindCommand::definition(dpp::snowflake botId) const
 
 void RewindCommand::execute(const dpp::slashcommand_t &event)
 {
-    if (!userMayControl(event)) {
-        return;
-    }
-
     int64_t seconds = 10;
     auto secondsParameter = event.get_parameter("seconds");
     if (std::holds_alternative<int64_t>(secondsParameter)) {
         seconds = std::clamp<int64_t>(std::get<int64_t>(secondsParameter), 1, 600);
     }
 
-    PlaybackController::SeekResult result = playback->seekBy(-static_cast<int>(seconds));
+    run(event, static_cast<int>(seconds));
+}
+
+void RewindCommand::execute(const dpp::button_click_t &event, const std::string &argument)
+{
+    int seconds = 10;
+    // Stays at the default when the argument isn't a number.
+    std::from_chars(argument.data(), argument.data() + argument.size(), seconds);
+    run(event, std::clamp(seconds, 1, 600));
+}
+
+void RewindCommand::run(const dpp::interaction_create_t &event, int seconds)
+{
+    if (!userMayControl(event)) {
+        return;
+    }
+
+    PlaybackController::SeekResult result = playback->seekBy(-seconds);
     if (!result.playing) {
-        event.reply(messages::nothingPlaying);
+        reply(event, messages::nothingPlaying);
     } else if (!result.seekable) {
-        event.reply(messages::songStillLoading);
+        reply(event, messages::songStillLoading);
     } else {
-        event.reply(messages::rewoundTo
-                    + timetext::formatProgress(result.positionSeconds, result.durationSeconds));
+        reply(event, messages::rewoundTo
+                     + timetext::formatProgress(result.positionSeconds, result.durationSeconds));
     }
 }

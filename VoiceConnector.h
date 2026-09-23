@@ -2,6 +2,7 @@
 
 namespace dpp {
 struct slashcommand_t;
+struct interaction_create_t;
 }
 
 class PlaybackController;
@@ -33,9 +34,9 @@ public:
 
     // True when the bot has a voice connection and the issuing user is in
     // that same channel - the requirement for controlling active playback.
-    static bool userInBotChannel(const dpp::slashcommand_t &event);
+    static bool userInBotChannel(const dpp::interaction_create_t &event);
 
     // True when nobody (except the bot itself) is in the bot's channel.
     // An audience of zero deserves no loyalty - anyone may take the bot.
-    static bool botIsAloneInChannel(const dpp::slashcommand_t &event);
+    static bool botIsAloneInChannel(const dpp::interaction_create_t &event);
 };

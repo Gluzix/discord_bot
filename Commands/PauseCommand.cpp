@@ -14,13 +14,23 @@ PauseCommand::PauseCommand(std::shared_ptr<PlaybackController> playback_)
 
 void PauseCommand::execute(const dpp::slashcommand_t &event)
 {
+    run(event);
+}
+
+void PauseCommand::execute(const dpp::button_click_t &event, const std::string &)
+{
+    run(event);
+}
+
+void PauseCommand::run(const dpp::interaction_create_t &event)
+{
     if (!userMayControl(event)) {
         return;
     }
 
     if (playback->pause()) {
-        event.reply(messages::pause);
+        reply(event, messages::pause);
     } else {
-        event.reply(messages::nothingPlaying);
+        reply(event, messages::nothingPlaying);
     }
 }
