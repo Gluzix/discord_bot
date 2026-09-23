@@ -31,7 +31,7 @@ public:
     void execute(const dpp::button_click_t &event, const std::string &argument) override;
 
 protected:
-    // A click answers only the clicker; a slash command answers the channel.
+    // interactions::reply decides how an interaction is answered.
     static void reply(const dpp::interaction_create_t &event, const std::string &text);
 
     // The audience-loyalty rule shared by every playback-control command:

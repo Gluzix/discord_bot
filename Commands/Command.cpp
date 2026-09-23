@@ -1,6 +1,7 @@
 #include "Command.h"
 #include "VoiceConnector.h"
 #include "PlaybackController.h"
+#include "Interactions.h"
 
 #include <dpp/dpp.h>
 
@@ -38,11 +39,7 @@ void Command::execute(const dpp::button_click_t &event, const std::string &)
 
 void Command::reply(const dpp::interaction_create_t &event, const std::string &text)
 {
-    dpp::message msg(text);
-    if (event.command.type == dpp::it_component_button) {
-        msg.set_flags(dpp::m_ephemeral);
-    }
-    event.reply(msg);
+    interactions::reply(event, text);
 }
 
 bool Command::userMayControl(const dpp::interaction_create_t &event, const char *refusalReply)
