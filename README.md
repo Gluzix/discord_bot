@@ -51,7 +51,7 @@ slash command ──► Commands/*Command ──► PlaybackController
 - Qt 6 (only `Core` is used).
 - FFmpeg via [vcpkg](https://vcpkg.io): `vcpkg install ffmpeg:x64-windows`.
 - [DPP 10.1.6](https://github.com/brainboxdotcc/DPP/releases) prebuilt package for Windows, unpacked **next to** this repository as `libdpp-10.1.6-win64-debug-vs2022` (the CMake file points there).
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases) on your `PATH`, kept up to date. An outdated yt-dlp is the usual reason for a sudden "Couldn't get the audio" on every song.
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases) on your `PATH` (or point `YT_DLP_PATH` at the binary), kept up to date. An outdated yt-dlp is the usual reason for a sudden "Couldn't get the audio" on every song.
 
 ## Building
 
@@ -92,7 +92,6 @@ The codebase carries a few hard-won rules that are easy to break by accident:
 ## Known limitations
 
 - One voice session at a time. The bot is built for a single server.
-- yt-dlp is looked up on `PATH`; to use a specific binary, set `YT_DLP_PATH` to its full path.
 - Playlists are capped at 100 entries.
 
 ## License
