@@ -36,7 +36,6 @@ void CommandHandler::setBot(std::shared_ptr<dpp::cluster> bot_)
 void CommandHandler::prepare()
 {
     playback = std::make_shared<PlaybackController>();
-    // A command takes it, so it has to exist before the commands are built.
     if (bot) {
         rejoiner = std::make_shared<VoiceRejoiner>(*bot);
     }
@@ -71,12 +70,10 @@ void CommandHandler::setupBot()
         return;
     }
 
-    // A voice session dpp can't recover is replaced by a fresh one.
     playback->setVoiceLostHandler([rejoiner = rejoiner](uint64_t guildId, uint64_t channelId) {
         rejoiner->rejoin(guildId, channelId);
     });
 
-    // The shard's registry is the only truth about which client is live.
     playback->setVoiceClientLookup([bot = bot](uint64_t guildId) -> dpp::discord_voice_client * {
         dpp::discord_client *shard = bot->get_shard(0);
         dpp::voiceconn *vc = shard ? shard->get_voice(guildId) : nullptr;
@@ -88,7 +85,6 @@ void CommandHandler::setupBot()
         return nullptr;
     });
 
-    // Starts a /play that was waiting for the voice handshake to finish.
     bot->on_voice_ready([playback = playback, rejoiner = rejoiner](const dpp::voice_ready_t& event) {
         playback->onVoiceReady(event);
         if (event.voice_client) {
@@ -96,17 +92,12 @@ void CommandHandler::setupBot()
         }
     });
 
-    // Any change of the bot's own voice channel (kicked, dragged, or
-    // disconnected) can destroy the old voice client - stop playback so
-    // no thread keeps sending into a dead client.
     bot->on_voice_state_update([playback = playback, bot = bot, rejoiner = rejoiner](const dpp::voice_state_update_t& event) {
         if (event.state.user_id != bot->me.id) {
             return;
         }
 
         if (event.state.channel_id == 0 && rejoiner->isPending(event.state.guild_id)) {
-            // A rejoin's own leave: it starts the join, and playback must not
-            // see it - that would stop the song and wipe the queue.
             rejoiner->onBotLeft(event.state.guild_id);
             return;
         }
@@ -114,9 +105,6 @@ void CommandHandler::setupBot()
         playback->onBotVoiceStateChanged(event.state.channel_id);
     });
 
-    // Leave voice after sitting idle (nothing playing, empty queue) for
-    // too long - the bot shouldn't squat in a channel it isn't serving.
-    // dpp's own connection registry is the source of truth for "in voice".
     constexpr int64_t IDLE_TIMEOUT_SECONDS = 5 * 60;
     bot->start_timer([bot = bot, playback = playback, rejoiner = rejoiner](dpp::timer) {
         rejoiner->tick();
@@ -132,10 +120,10 @@ void CommandHandler::setupBot()
 
         dpp::discord_client* shard = bot->get_shard(0);
         if (shard == nullptr || shard->get_voice(info.guildId) == nullptr) {
-            return; // not connected - nothing to leave
+            return;
         }
 
-        playback->stop(); // teardown order: our threads let go first
+        playback->stop();
         shard->disconnect_voice(info.guildId);
         if (info.textChannelId != 0) {
             bot->message_create(dpp::message(info.textChannelId, messages::idleLeft));

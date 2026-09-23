@@ -1,7 +1,6 @@
 #pragma once
 
-// Every reply the bot sends to users, in one place - edit the bot's voice
-// here. Log messages and technical strings stay next to their code.
+// Every reply users see; log and technical strings stay next to their code.
 namespace messages {
 
 // joining voice channels

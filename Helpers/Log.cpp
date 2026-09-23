@@ -32,7 +32,6 @@ const char *LOG_DIRECTORY = "logs";
 const std::uintmax_t MAX_FILE_BYTES = 10 * 1024 * 1024;
 const std::uintmax_t MAX_TOTAL_BYTES = 50 * 1024 * 1024;
 
-// Never destroyed: a dpp thread can still log while the statics unwind.
 std::mutex &sinkMutex()
 {
     static std::mutex *mutex = new std::mutex();
@@ -123,8 +122,6 @@ void pruneOldLogs(const std::filesystem::path &openPath)
     }
 }
 
-// Call with sinkMutex held: the header goes straight to the stream, because
-// writeLine would deadlock on that same mutex.
 void openLogFile()
 {
     std::error_code error;
@@ -148,8 +145,7 @@ void openLogFile()
     pruneOldLogs(path);
 }
 
-// The one writer for both sources; it runs on every thread there is, and it
-// must never log itself. A null console keeps the line out of the terminal.
+// A null console keeps the line out of the terminal.
 void writeLine(const std::string &level, const std::string &message, std::ostream *console)
 {
     const std::string line = timestamp() + " [" + threadLabel() + "] " + level + ": " + message;
@@ -211,7 +207,6 @@ void nameThisThread(const char *name)
 
 void dppLog(const dpp::log_t &event)
 {
-    // TRACE is dpp's websocket frame dump: worth keeping, too loud to show.
     std::ostream *console = event.severity == dpp::ll_trace ? nullptr : &std::cout;
     writeLine(dpp::utility::loglevel(event.severity), event.message, console);
 }

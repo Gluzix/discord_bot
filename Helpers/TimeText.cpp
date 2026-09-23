@@ -43,7 +43,6 @@ std::optional<int> parsePosition(const std::string &text)
     if (fields.size() > 3) {
         return std::nullopt;
     }
-    // Only the largest unit may run past 59.
     for (size_t i = 1; i < fields.size(); ++i) {
         if (fields[i] > 59) {
             return std::nullopt;

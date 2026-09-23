@@ -54,8 +54,8 @@ void PlaylistCommand::execute(const dpp::slashcommand_t &event)
 
     size_t queued = playback->playPlaylist(listing.entries, event);
 
-    // "Queued 37 songs from [Title](<link>)" - the title is untrusted page
-    // text, so no mentions; <> keeps the embed preview away.
+    // The title is untrusted page text, so no mentions; <> keeps the embed
+    // preview away.
     std::string name = listing.title.empty() ? std::string(messages::playlistFallbackName) : listing.title;
     std::string text = messages::playlistQueuedPrefix + std::to_string(queued)
         + (queued == 1 ? messages::playlistQueuedOne : messages::playlistQueuedMany)

@@ -15,7 +15,6 @@ VoiceRejoiner::VoiceRejoiner(dpp::cluster &bot_)
 
 void VoiceRejoiner::rejoin(uint64_t guildId, uint64_t channelId)
 {
-    // Joining channel 0 is a leave - a recovery must never become one.
     if (channelId == 0) {
         bot.log(dpp::ll_warning, "Voice rejoin for guild " + std::to_string(guildId)
                                  + " skipped: the channel is unknown");
@@ -107,8 +106,6 @@ void VoiceRejoiner::tick()
         }
     }
 
-    // dpp is called with no lock held - its voice teardown is slow and its
-    // events come back on other threads.
     for (uint64_t guildId : gaveUp) {
         bot.log(dpp::ll_warning, "Voice rejoin for guild " + std::to_string(guildId)
                                  + " gave up; the queue is kept, /join to retry");
@@ -124,8 +121,6 @@ bool VoiceRejoiner::isPending(uint64_t guildId)
     return pending.find(guildId) != pending.end();
 }
 
-// Leaving first is what makes this work: connect_voice does nothing while dpp
-// still holds a voiceconn for the guild.
 void VoiceRejoiner::leave(uint64_t guildId, uint64_t channelId)
 {
     dpp::discord_client *shard = bot.get_shard(0);

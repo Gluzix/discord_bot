@@ -15,12 +15,6 @@ VoiceConnector::Result VoiceConnector::ensureJoined(const dpp::slashcommand_t &e
             return Result::AlreadyInChannel;
         }
 
-        // Connected somewhere else. Do NOT disconnect first: dpp moves
-        // channels by simply connecting to the new one (it replaces the
-        // voiceconn), and a disconnect+connect races the gateway - the
-        // disconnect's ack tears down the brand-new connection and
-        // voice_ready never fires. The switch still destroys the old voice
-        // client, so playback (whose threads hold a pointer) stops first.
         if (playback) {
             playback->stop();
         }

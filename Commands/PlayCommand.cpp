@@ -40,9 +40,6 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
         input = std::get<std::string>(songParameter);
     }
 
-    // A valid YouTube link plays directly; anything else becomes a yt-dlp
-    // search for the first matching video. A bare playlist page has no
-    // video to play - point at /playlist instead.
     std::string target;
     if (youtube::isPlaylistPageUrl(input)) {
         event.edit_original_response(dpp::message(messages::usePlaylistCommand));
@@ -59,8 +56,6 @@ void PlayCommand::execute(const dpp::slashcommand_t &event)
 
     size_t waitingPosition = playback->play(target, event);
     if (waitingPosition > 0) {
-        // Something is already playing; the placeholder becomes the queue
-        // confirmation and morphs into "Playing: <title>" when its turn comes.
         event.edit_original_response(dpp::message(messages::queuedAtPrefix + std::to_string(waitingPosition)));
     }
 }

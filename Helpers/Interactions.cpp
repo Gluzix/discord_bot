@@ -8,8 +8,6 @@
 
 namespace {
 
-// Every component interaction, not only buttons - fine while buttons are the
-// only components this bot sends.
 bool isClick(const dpp::interaction_create_t &event)
 {
     return event.command.type == dpp::it_component_button;
