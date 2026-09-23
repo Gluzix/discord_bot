@@ -90,7 +90,7 @@ The codebase carries a few hard-won rules that are easy to break by accident:
 ## Known limitations
 
 - One voice session at a time. The bot is built for a single server.
-- If yt-dlp is not on `PATH`, the fallback path in `WindowsProcessRunner.cpp` is the author's; change it or, better, put yt-dlp on your `PATH`.
+- yt-dlp is looked up on `PATH`; to use a specific binary, set `YT_DLP_PATH` to its full path.
 - Playlists are capped at 100 entries.
 
 ## License

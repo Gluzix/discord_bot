@@ -12,8 +12,6 @@
 #include <cstdlib>
 #include <vector>
 
-const std::string WindowsProcessRunner::YT_DLP = "yt-dlp";
-const std::string WindowsProcessRunner::YT_DLP_PATH = "C:/Users/kamil/Downloads/ytdlp/yt-dlp.exe";
 const std::string WindowsProcessRunner::YT_DLP_SONG_ARGS = "--no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print webpage_url --print urls";
 const std::string WindowsProcessRunner::YT_DLP_SEARCH_ARGS = "--flat-playlist --no-warnings --socket-timeout 10 --encoding utf-8 --print \"%(ie_key)s %(url)s\"";
 const std::string WindowsProcessRunner::SEARCH_PREFIX = "ytsearch1:";
@@ -80,6 +78,18 @@ static std::string ensureUtf8(const std::string &text)
     return text;
 }
 
+static std::wstring ytDlpExecutable()
+{
+    const DWORD size = GetEnvironmentVariableW(L"YT_DLP_PATH", nullptr, 0);
+    std::wstring path(size, 0);
+    const DWORD length = GetEnvironmentVariableW(L"YT_DLP_PATH", path.data(), size);
+    if (length == 0 || length >= size) {
+        return L"yt-dlp";
+    }
+    path.resize(length);
+    return L"\"" + path + L"\""; // a full path may contain spaces
+}
+
 WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::string &args, const CancelCheck &cancelled)
 {
     YtDlpOutput result;
@@ -114,17 +124,14 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     // Suspended until it is inside the job, so nothing can be spawned outside it.
     const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_SUSPENDED;
     PROCESS_INFORMATION processInfo{};
-    std::wstring commandToRun = utf8ToWide(YT_DLP + " " + args);
+    std::wstring commandToRun = ytDlpExecutable() + L" " + utf8ToWide(args);
     if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, creationFlags, nullptr, nullptr, &startupInfo, &processInfo)) {
-        // yt-dlp not on PATH - retry with the known local install.
-        commandToRun = utf8ToWide("\"" + YT_DLP_PATH + "\" " + args);
-        if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, creationFlags, nullptr, nullptr, &startupInfo, &processInfo)) {
-            qDebug() << "Failed to create yt-dlp process";
-            CloseHandle(job);
-            CloseHandle(readPipe);
-            CloseHandle(writePipe);
-            return result;
-        }
+        const DWORD error = GetLastError(); // before qDebug can overwrite it
+        qDebug() << "Could not start yt-dlp - put it on PATH or set YT_DLP_PATH, error:" << error;
+        CloseHandle(job);
+        CloseHandle(readPipe);
+        CloseHandle(writePipe);
+        return result;
     }
     if (!AssignProcessToJobObject(job, processInfo.hProcess)) {
         qDebug() << "yt-dlp runs outside a job object - a kill won't reach its children";
