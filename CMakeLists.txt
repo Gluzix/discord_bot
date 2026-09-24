@@ -111,3 +111,9 @@ install(TARGETS discord_bot
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+option(DISCORD_BOT_TESTS "Build the tests" ON)
+if(DISCORD_BOT_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

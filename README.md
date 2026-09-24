@@ -55,7 +55,7 @@ slash command ──► Commands/*Command ──► PlaybackController
 
 ## Requirements
 
-- Windows 10 or 11, Visual Studio 2022 (MSVC), CMake 3.14+, Ninja (Qt Creator provides one).
+- Windows 10 or 11, Visual Studio 2022 (MSVC), CMake 3.22+, Ninja (Qt Creator provides one).
 - Qt 6 (only `Core` is used).
 - FFmpeg via [vcpkg](https://vcpkg.io): `vcpkg install ffmpeg:x64-windows`.
 - [DPP 10.1.6](https://github.com/brainboxdotcc/DPP/releases) prebuilt package for Windows, unpacked **next to** this repository as `libdpp-10.1.6-win64-debug-vs2022` (the CMake file points there).
@@ -94,6 +94,8 @@ The bot logs to the console and to `logs/discord_bot-<date>-<time>.log` in the d
 ## Development
 
 Pull requests are reviewed automatically by a Claude workflow in `.github/workflows/claude-review.yml`; it comments on the whole diff when a PR is opened, then on just the new commits after every push to it. Feature work happens on branches and lands through PRs.
+
+The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the time text, the playback buttons and the interaction replies. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
 
 The codebase carries a few hard-won rules that are easy to break by accident:
 
