@@ -5,6 +5,7 @@
 #include "StopCommand.h"
 #include "SkipCommand.h"
 #include "QueueCommand.h"
+#include "NowPlayingCommand.h"
 #include "PlayCommand.h"
 #include "PlaybackController.h"
 #include "Messages.h"
@@ -54,6 +55,7 @@ void CommandHandler::setupCommands()
     add<LeaveCommand>(playback, rejoiner);
     add<SkipCommand>(playback);
     add<QueueCommand>(playback);
+    add<NowPlayingCommand>(playback);
     add<PauseCommand>(playback);
     add<ResumeCommand>(playback);
     add<LoopCommand>(playback);
