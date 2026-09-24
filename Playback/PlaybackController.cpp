@@ -321,6 +321,29 @@ PlaybackController::QueueSnapshot PlaybackController::queueSnapshot()
     return snapshot;
 }
 
+PlaybackController::NowPlaying PlaybackController::nowPlaying()
+{
+    NowPlaying now;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        now.playing = songInProgress;
+        now.label = currentSongLabel;
+        now.loop = loopMode;
+    }
+    if (!now.playing) {
+        return now;
+    }
+
+    const std::optional<SongPlayer::Position> position = songPlayer->position();
+    if (position) {
+        now.positionKnown = true;
+        now.positionSeconds = position->seconds;
+        now.durationSeconds = position->durationSeconds;
+    }
+    now.paused = isPaused();
+    return now;
+}
+
 void PlaybackController::playbackWorker()
 {
     logging::nameThisThread("worker");

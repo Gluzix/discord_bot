@@ -56,3 +56,8 @@ std::optional<SongPlayer::Position> SongPlayer::seekTo(int seconds)
 {
     return pcmBuffer.seek(seconds, false);
 }
+
+std::optional<SongPlayer::Position> SongPlayer::position() const
+{
+    return pcmBuffer.position();
+}

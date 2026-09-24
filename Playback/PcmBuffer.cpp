@@ -117,6 +117,15 @@ bool PcmBuffer::cutShort() const
     return !(decodingFinished && audioQueue.empty());
 }
 
+std::optional<PcmBuffer::Position> PcmBuffer::position() const
+{
+    std::lock_guard<std::mutex> lock(queueMutex);
+    if (!isPlaying || songEnding || !seekRequester) {
+        return std::nullopt;
+    }
+    return Position{static_cast<double>(playedBytes) / BYTES_PER_SECOND, durationSeconds};
+}
+
 std::optional<PcmBuffer::Position> PcmBuffer::seek(double seconds, bool relative)
 {
     std::unique_lock<std::mutex> lock(queueMutex);
