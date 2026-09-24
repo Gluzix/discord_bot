@@ -61,6 +61,9 @@ public:
         double durationSeconds{0}; // 0 = unknown
     };
 
+    // nullopt exactly when seek() would refuse.
+    std::optional<Position> position() const;
+
     // `seconds` is added to the current position when relative, otherwise
     // it is the target itself. nullopt when there is nothing to seek in
     // right now.

@@ -33,14 +33,6 @@ static bool waitFor(std::atomic<bool> &flag, milliseconds timeout)
     return flag;
 }
 
-// The only way in from outside: a relative seek of zero reports the position.
-// It is a real seek, so it empties the queue - read the position last.
-static double positionOf(PcmBuffer &buffer)
-{
-    const auto position = buffer.seek(0, true);
-    return position ? position->seconds : -1.0;
-}
-
 struct RequesterLog
 {
     std::atomic<int> calls{0};
@@ -220,7 +212,8 @@ int main()
         const auto jumped = buffer.seek(100, false);
         check(jumped && nearly(jumped->seconds, 100), "the optimistic position is the target");
         buffer.seekApplied(log.ticket, false);
-        check(nearly(positionOf(buffer), 1.0), "a failed seek restores played plus dropped bytes");
+        const auto restored = buffer.position();
+        check(restored && nearly(restored->seconds, 1.0), "a failed seek restores played plus dropped bytes");
         buffer.stop();
     }
 
@@ -329,7 +322,8 @@ int main()
         for (int i = 0; i < 4; ++i) {
             buffer.next();
         }
-        check(nearly(positionOf(buffer), 0.4), "four pops move the position by four packets");
+        const auto position = buffer.position();
+        check(position && nearly(position->seconds, 0.4), "four pops move the position by four packets");
         buffer.stop();
     }
 
@@ -349,7 +343,8 @@ int main()
         const auto jumped = buffer.seek(5, false);
         check(jumped && nearly(jumped->seconds, 5), "a real seek reports its optimistic target");
         buffer.seekApplied(log.ticket, true);
-        check(nearly(positionOf(buffer), 5), "...and the position is there");
+        const auto landed = buffer.position();
+        check(landed && nearly(landed->seconds, 5), "...and the position is there");
         buffer.stop();
     }
 
@@ -363,6 +358,50 @@ int main()
         check(jumped && nearly(jumped->seconds, 12.5), "a target past the end is clamped to the duration");
         check(nearly(log.seconds, 12.5), "the requester was asked for the clamped target");
         buffer.stop();
+    }
+
+    { // position(): a read, not a seek
+        PcmBuffer buffer;
+        RequesterLog log;
+        buffer.arm();
+        buffer.setDuration(12.5);
+        check(!buffer.position(), "position() is nullopt before a requester is set");
+        listen(buffer, log);
+        const auto start = buffer.position();
+        check(start && nearly(start->seconds, 0), "position() starts at zero");
+        check(start && nearly(start->durationSeconds, 12.5), "position() carries the duration that was set");
+
+        for (int i = 0; i < 10; ++i) {
+            buffer.push(packet());
+        }
+        for (int i = 0; i < 3; ++i) {
+            buffer.next();
+        }
+        const auto popped = buffer.position();
+        check(popped && nearly(popped->seconds, 0.3), "three pops move position() by three packets");
+        check(log.calls == 0 && !buffer.takeFlushRequest(), "reading position() asks for no seek and no flush");
+
+        buffer.markFinished();
+        int left = 0;
+        while (buffer.next().kind == Kind::Packet) {
+            ++left;
+        }
+        check(left == 7, "reading position() drops nothing from the queue");
+        check(!buffer.position(), "position() is nullopt after Ended");
+        buffer.stop();
+    }
+
+    { // position(): a real seek, then a stop
+        PcmBuffer buffer;
+        RequesterLog log;
+        buffer.arm();
+        buffer.setDuration(300);
+        listen(buffer, log);
+        buffer.seek(100, false);
+        const auto jumped = buffer.position();
+        check(jumped && nearly(jumped->seconds, 100), "position() shows a real seek's optimistic target");
+        buffer.stop();
+        check(!buffer.position(), "position() is nullopt once stopped");
     }
 
     { // reset
@@ -395,7 +434,7 @@ int main()
 
         RequesterLog after;
         listen(buffer, after);
-        const auto position = buffer.seek(0, true);
+        const auto position = buffer.position();
         check(position && nearly(position->seconds, 0.1), "reset restarts the position at zero");
         check(position && nearly(position->durationSeconds, 0), "reset clears the duration");
         buffer.stop();
