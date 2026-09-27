@@ -33,7 +33,7 @@ void PlayingPanel::retire(const std::shared_ptr<PlayingPanel> &panel)
         cluster->stop_timer(handle); // one-shot
         const uint64_t id = panel->messageId;
         if (id == 0) {
-            qDebug() << "A \"Playing:\" message keeps its buttons: its id has not come back yet";
+            qDebug() << "A \"Playing:\" message has no id to edit - its buttons, if any, stay";
             return;
         }
 
