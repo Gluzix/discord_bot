@@ -39,7 +39,7 @@ public:
     // confirmed, so the join can go out now.
     void onBotLeft(uint64_t guildId);
 
-    // A user's /leave: the bot was told to go, so stop trying to come back.
+    // /leave or a leave timer sent the bot away: stop trying to come back.
     void cancel(uint64_t guildId);
 
     void onVoiceReady(uint64_t guildId);
