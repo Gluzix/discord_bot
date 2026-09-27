@@ -56,6 +56,9 @@ public:
     std::optional<Position> seekBy(int deltaSeconds);
     std::optional<Position> seekTo(int seconds);
 
+    // nullopt exactly when a jump would be.
+    std::optional<Position> position() const;
+
 private:
     std::function<void(std::string)> onLabelResolved;
 

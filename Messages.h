@@ -68,13 +68,14 @@ inline constexpr const char* loopSong  = "Looping the current song!";
 inline constexpr const char* loopQueue = "Looping the whole queue!";
 inline constexpr const char* loopOff   = "Looping turned off!";
 
-// /queue
+// /queue, /nowplaying
 inline constexpr const char* queueEmpty            = "The queue is empty and nothing is playing.";
 inline constexpr const char* queueLoopSongSuffix   = " (loop: song)";
 inline constexpr const char* queueLoopQueueSuffix  = " (loop: queue)";
 inline constexpr const char* queueNowPlayingPrefix = "Now playing: ";
 inline constexpr const char* queueMorePrefix       = "...and ";
 inline constexpr const char* queueMoreSuffix       = " more";
+inline constexpr const char* nowPlayingPausedSuffix = " (paused)";
 
 // playback buttons
 inline constexpr const char* unknownButton = "That button doesn't work any more - use the slash commands!";

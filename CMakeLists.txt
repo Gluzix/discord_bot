@@ -42,6 +42,7 @@ add_executable(discord_bot
   Commands/StopCommand.h Commands/StopCommand.cpp
   Commands/SkipCommand.h Commands/SkipCommand.cpp
   Commands/QueueCommand.h Commands/QueueCommand.cpp
+  Commands/NowPlayingCommand.h Commands/NowPlayingCommand.cpp
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
   Runner/WindowsProcessRunner.h Runner/WindowsProcessRunner.cpp

@@ -150,6 +150,19 @@ public:
 
     QueueSnapshot queueSnapshot();
 
+    struct NowPlaying
+    {
+        bool playing{false};          // a song is in progress
+        std::string label;            // rendered markdown of the current song
+        bool positionKnown{false};    // ... and the player could say where it is
+        double positionSeconds{0};
+        double durationSeconds{0};    // 0 = unknown
+        bool paused{false};
+        LoopMode loop{LoopMode::Off};
+    };
+
+    NowPlaying nowPlaying();
+
 private:
 
 

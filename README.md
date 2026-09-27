@@ -11,6 +11,7 @@ Built on [D++ (DPP)](https://dpp.dev) for Discord, FFmpeg for decoding, [yt-dlp]
 | `/play song:<link or title>` | Plays a YouTube link, or searches YouTube for a title and plays the first hit. Queues it if something is already playing. |
 | `/playlist link:<playlist link>` | Queues every video of a YouTube playlist (the first 100). |
 | `/queue` | Shows what's playing and what's waiting. |
+| `/nowplaying` | Shows the current song and how far into it playback is, with the "Playing:" buttons under it. |
 | `/skip [count]` | Skips the current song, or the current one plus the next `count-1`. |
 | `/stop` | Stops playback and clears the queue. |
 | `/pause` / `/resume` | What they say. |
