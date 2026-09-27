@@ -11,14 +11,16 @@ namespace dpp {
 class discord_voice_client;
 }
 
+class IMediaResolver;
+
 // Commands one song; the queue and loop policy stay in PlaybackController.
 // =======================================================
 // Rules:
 // - play() joins the sender first: after that no song thread is on the voice
 //   client, so play() is the one place that may call it after a song.
 // - In play(), those client calls come before decoder.join(): a decoder stuck
-//   in yt-dlp can outlive PlaybackController::stop()'s bounded wait, and past
-//   that the client may be gone.
+//   in a resolve can outlive PlaybackController::stop()'s bounded wait, and
+//   past that the client may be gone.
 // - After VoiceLost not one client call more in play(), not even is_paused():
 //   dpp may already have destroyed the client it gave up on.
 // =======================================================
@@ -35,7 +37,7 @@ public:
 
     // onLabelResolved is called (from the decoder thread) with the rendered
     // "now playing" label once the song resolves.
-    explicit SongPlayer(std::function<void(std::string)> onLabelResolved_);
+    SongPlayer(IMediaResolver &resolver_, std::function<void(std::string)> onLabelResolved_);
 
     // Makes the coming play() stoppable from this moment: a stop() landing
     // between arm() and play() ends the song before it starts. Call it in
@@ -60,6 +62,7 @@ public:
     std::optional<Position> position() const;
 
 private:
+    IMediaResolver &resolver;
     std::function<void(std::string)> onLabelResolved;
 
     PcmBuffer pcmBuffer;

@@ -18,6 +18,8 @@
 #include "VoiceRejoiner.h"
 #include "VoiceLeaver.h"
 #include "Interactions.h"
+#include "WindowsProcessRunner.h"
+#include "YtDlpResolver.h"
 #include <QDebug>
 #include <QString>
 
@@ -36,7 +38,8 @@ void CommandHandler::setBot(std::shared_ptr<dpp::cluster> bot_)
 
 void CommandHandler::prepare()
 {
-    playback = std::make_shared<PlaybackController>();
+    resolver = std::make_shared<YtDlpResolver>(std::make_shared<WindowsProcessRunner>(), YtDlpResolver::programFromEnvironment());
+    playback = std::make_shared<PlaybackController>(resolver);
     if (bot) {
         rejoiner = std::make_shared<VoiceRejoiner>(*bot);
     }
@@ -62,7 +65,7 @@ void CommandHandler::setupCommands()
     add<ForwardCommand>(playback);
     add<RewindCommand>(playback);
     add<SeekCommand>(playback);
-    add<PlaylistCommand>(playback);
+    add<PlaylistCommand>(playback, resolver);
 }
 
 void CommandHandler::setupBot()

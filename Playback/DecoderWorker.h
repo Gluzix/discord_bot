@@ -13,6 +13,7 @@ struct message;
 struct confirmation_callback_t;
 }
 
+class IMediaResolver;
 struct ResolvedMedia;
 
 // Resolves, announces and decodes one song into the buffer's producer side.
@@ -20,8 +21,8 @@ struct ResolvedMedia;
 // Rules:
 // - Every exit from run() ends in buffer.markFinished(): the sender waits on
 //   the queue and must be released.
-// - A stop is checked in run() before yt-dlp, after the resolve and before
-//   the announcement: a song stopped early never launches yt-dlp, a cancelled
+// - A stop is checked in run() before the resolve, after it and before the
+//   announcement: a song stopped early never starts a resolve, a cancelled
 //   resolve (empty too) is no error, and a stop during "Looking for your
 //   song..." never announces.
 // - The seek requester is set in decode() only after resampler.open(), the
@@ -37,7 +38,8 @@ class DecoderWorker
 public:
     // Starts the thread. onLabelResolved is called (from it) with the rendered
     // "now playing" label once the song resolves.
-    DecoderWorker(PcmBuffer &buffer_, Song &song_, std::function<void(std::string)> onLabelResolved_);
+    DecoderWorker(PcmBuffer &buffer_, Song &song_, IMediaResolver &resolver_,
+                  std::function<void(std::string)> onLabelResolved_);
     ~DecoderWorker();
 
     DecoderWorker(const DecoderWorker &) = delete;
@@ -58,6 +60,7 @@ private:
     PcmResampler resampler;
     PcmBuffer &buffer;
     Song &song;
+    IMediaResolver &resolver;
     std::function<void(std::string)> onLabelResolved;
 
     bool songFailed = false;

@@ -1,4 +1,5 @@
 #include "WindowsProcessRunner.h"
+#include "WindowsCommandLine.h"
 
 // Keep windows.h from dragging in the old winsock.h, which conflicts with
 // the WinSock2.h that dpp includes.
@@ -9,12 +10,7 @@
 
 #include <QDebug>
 #include <chrono>
-#include <cstdlib>
 #include <vector>
-
-const std::string WindowsProcessRunner::YT_DLP_SONG_ARGS = "--no-playlist --no-warnings --socket-timeout 10 --encoding utf-8 -f bestaudio --print title --print webpage_url --print urls";
-const std::string WindowsProcessRunner::YT_DLP_SEARCH_ARGS = "--flat-playlist --no-warnings --socket-timeout 10 --encoding utf-8 --print \"%(ie_key)s %(url)s\"";
-const std::string WindowsProcessRunner::SEARCH_PREFIX = "ytsearch1:";
 
 static bool isValidUtf8(const std::string &text)
 {
@@ -76,21 +72,11 @@ static std::string ensureUtf8(const std::string &text)
     return text;
 }
 
-static std::wstring ytDlpExecutable()
+IProcessRunner::Output WindowsProcessRunner::run(const std::string &program, const std::vector<std::string> &arguments,
+                                                 std::chrono::seconds timeout, const CancelCheck &cancelled)
 {
-    const DWORD size = GetEnvironmentVariableW(L"YT_DLP_PATH", nullptr, 0);
-    std::wstring path(size, 0);
-    const DWORD length = GetEnvironmentVariableW(L"YT_DLP_PATH", path.data(), size);
-    if (length == 0 || length >= size) {
-        return L"yt-dlp";
-    }
-    path.resize(length);
-    return L"\"" + path + L"\""; // a full path may contain spaces
-}
-
-WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::string &args, const CancelCheck &cancelled)
-{
-    YtDlpOutput result;
+    Output result;
+    const QString name = QString::fromStdString(program);
 
     SECURITY_ATTRIBUTES secAttr{};
     secAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -99,7 +85,7 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     HANDLE readPipe = nullptr;
     HANDLE writePipe = nullptr;
     if (!CreatePipe(&readPipe, &writePipe, &secAttr, PIPE_BUFFER_BYTES)) {
-        qDebug() << "Failed to create yt-dlp pipes";
+        qDebug().noquote() << "Failed to create the pipes for" << name;
         return result;
     }
     SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
@@ -118,17 +104,19 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     // Suspended until it is inside the job, so nothing can be spawned outside it.
     const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_SUSPENDED;
     PROCESS_INFORMATION processInfo{};
-    std::wstring commandToRun = ytDlpExecutable() + L" " + utf8ToWide(args);
+    const std::string commandLine = windows::commandLine(program, arguments);
+    std::wstring commandToRun = utf8ToWide(commandLine);
     if (!CreateProcessW(nullptr, commandToRun.data(), nullptr, nullptr, TRUE, creationFlags, nullptr, nullptr, &startupInfo, &processInfo)) {
         const DWORD error = GetLastError(); // before qDebug can overwrite it
-        qDebug() << "Could not start yt-dlp - put it on PATH or set YT_DLP_PATH, error:" << error;
+        qDebug().noquote() << "Could not start" << name + "," << "error:" << error;
         CloseHandle(job);
         CloseHandle(readPipe);
         CloseHandle(writePipe);
         return result;
     }
+    result.started = true;
     if (!AssignProcessToJobObject(job, processInfo.hProcess)) {
-        qDebug() << "yt-dlp runs outside a job object - a kill won't reach its children";
+        qDebug().noquote() << name << "runs outside a job object - a kill won't reach its children";
     }
     ResumeThread(processInfo.hThread);
     CloseHandle(processInfo.hThread);
@@ -147,7 +135,7 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
         }
     };
 
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(YT_DLP_TIMEOUT_SECONDS);
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
     bool killed = false;
     for (;;) {
         drainPipe();
@@ -158,7 +146,8 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
         result.cancelled = cancelled && cancelled();
         if (result.cancelled || std::chrono::steady_clock::now() >= deadline) {
             if (!result.cancelled) {
-                qDebug() << "yt-dlp killed after" << YT_DLP_TIMEOUT_SECONDS << "s:" << QString::fromStdString(args).right(60);
+                qDebug().noquote() << name << "killed after" << timeout.count() << "s:"
+                                   << QString::fromStdString(commandLine).right(60);
             }
             TerminateJobObject(job, 1);
             killed = true;
@@ -171,7 +160,7 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
     if (!killed) {
         GetExitCodeProcess(processInfo.hProcess, &exitCode);
     }
-    result.exitCode = exitCode;
+    result.exitCode = static_cast<int>(exitCode);
     CloseHandle(processInfo.hProcess);
     CloseHandle(job);
 
@@ -186,103 +175,9 @@ WindowsProcessRunner::YtDlpOutput WindowsProcessRunner::runYtDlp(const std::stri
             line.pop_back();
         }
         if (!line.empty()) {
-            result.lines.push_back(line);
+            result.lines.push_back(ensureUtf8(line));
         }
         start = eol + 1;
     }
     return result;
-}
-
-std::string WindowsProcessRunner::firstVideoUrl(const std::string &query, const CancelCheck &cancelled)
-{
-    YtDlpOutput run = runYtDlp(YT_DLP_SEARCH_ARGS + " \"ytsearch5:" + query + "\"", cancelled);
-
-    // One "<extractor> <url>" line per result: plain videos come from
-    // "Youtube", channels and playlists from "YoutubeTab".
-    const std::string videoMarker = "Youtube ";
-    for (const std::string &line : run.lines) {
-        if (line.rfind(videoMarker, 0) == 0) {
-            return line.substr(videoMarker.size());
-        }
-    }
-    if (!run.cancelled) {
-        qDebug() << "yt-dlp search found no video, exit code:" << run.exitCode;
-    }
-    return {};
-}
-
-ResolvedMedia WindowsProcessRunner::resolveMedia(const std::string &target, const CancelCheck &cancelled)
-{
-    std::string url = target;
-    if (target.rfind(SEARCH_PREFIX, 0) == 0) {
-        url = firstVideoUrl(target.substr(SEARCH_PREFIX.size()), cancelled);
-        if (url.empty()) {
-            return {};
-        }
-    }
-
-    YtDlpOutput run = runYtDlp(YT_DLP_SONG_ARGS + " \"" + url + "\"", cancelled);
-    const std::vector<std::string> &lines = run.lines;
-
-    if (run.cancelled) {
-        return {};
-    }
-    if (run.exitCode != 0 || lines.empty() || lines.back().rfind("http", 0) != 0) {
-        qDebug() << "yt-dlp did not return a usable URL, exit code:" << run.exitCode;
-        return {};
-    }
-
-    // Line order matches the --print flags: title, webpage_url, direct url.
-    ResolvedMedia media;
-    media.directUrl = lines.back();
-    if (lines.size() >= 3) {
-        media.title = ensureUtf8(lines[0]);
-        media.webpageUrl = lines[1];
-    } else if (lines.size() == 2) {
-        media.title = ensureUtf8(lines[0]);
-    }
-    return media;
-}
-
-PlaylistListing WindowsProcessRunner::listPlaylist(const std::string &playlistUrl, size_t maxEntries)
-{
-    // --flat-playlist lists entries without extracting any video, so even a
-    // 6000-video playlist answers in a few seconds. Each entry prints as a
-    // url/title line pair; the "playlist:" prints come once, after them.
-    const std::string args = "--flat-playlist --no-warnings --socket-timeout 10 --encoding utf-8"
-        " --playlist-items :" + std::to_string(maxEntries) +
-        " --print url --print title"
-        " --print \"playlist:PLAYLIST_TITLE=%(title)s\""
-        " --print \"playlist:PLAYLIST_COUNT=%(playlist_count)s\""
-        " \"" + playlistUrl + "\"";
-    YtDlpOutput run = runYtDlp(args, {});
-    if (run.exitCode != 0) {
-        qDebug() << "yt-dlp playlist listing exit code:" << run.exitCode;
-    }
-
-    const std::string titleMarker = "PLAYLIST_TITLE=";
-    const std::string countMarker = "PLAYLIST_COUNT=";
-    PlaylistListing listing;
-    std::string pendingUrl;
-    for (const std::string &line : run.lines) {
-        if (line.rfind(titleMarker, 0) == 0) {
-            std::string title = line.substr(titleMarker.size());
-            listing.title = (title == "NA") ? std::string{} : ensureUtf8(title);
-        } else if (line.rfind(countMarker, 0) == 0) {
-            listing.totalCount = std::strtoul(line.c_str() + countMarker.size(), nullptr, 10); // "NA" -> 0
-        } else if (pendingUrl.empty()) {
-            pendingUrl = line;
-        } else {
-            // YouTube keeps placeholder entries for videos nobody can play.
-            // A private one now shows up with no title at all ("NA").
-            if (line != "[Private video]" && line != "[Deleted video]" && line != "NA") {
-                listing.entries.push_back({pendingUrl, ensureUtf8(line)});
-            }
-            pendingUrl.clear();
-        }
-    }
-    if (!pendingUrl.empty()) {
-        qDebug() << "Playlist listing ended mid-entry - dropped" << QString::fromStdString(pendingUrl);
-    }
-    return listing;
 }

@@ -1,10 +1,10 @@
 #include "DecoderWorker.h"
+#include "IMediaResolver.h"
 #include "Labels.h"
 #include "Log.h"
 #include "Messages.h"
 #include "PlaybackButtons.h"
 #include "PlayingPanel.h"
-#include "WindowsProcessRunner.h"
 
 #include <QDebug>
 
@@ -15,10 +15,12 @@
 // googlevideo urls are ip-bound and expire after a few hours.
 constexpr int64_t FRESH_FOR_SECONDS = 3600;
 
-DecoderWorker::DecoderWorker(PcmBuffer &buffer_, Song &song_, std::function<void(std::string)> onLabelResolved_)
+DecoderWorker::DecoderWorker(PcmBuffer &buffer_, Song &song_, IMediaResolver &resolver_,
+                             std::function<void(std::string)> onLabelResolved_)
     : resampler(dpp::send_audio_raw_max_length)
     , buffer(buffer_)
     , song(song_)
+    , resolver(resolver_)
     , onLabelResolved(std::move(onLabelResolved_))
 {
     thread = std::thread(&DecoderWorker::run, this);
@@ -132,7 +134,7 @@ ResolvedMedia DecoderWorker::mediaToPlay()
         media.webpageUrl = song.webpageUrl;
         media.directUrl = song.directUrl;
     } else {
-        media = WindowsProcessRunner::resolveMedia(song.target, [this] { return !buffer.running(); });
+        media = resolver.resolveMedia(song.target, [this] { return !buffer.running(); });
         if (!media.directUrl.empty()) {
             // Written back so a loop replay starts from the fresh url with no
             // extra bookkeeping.

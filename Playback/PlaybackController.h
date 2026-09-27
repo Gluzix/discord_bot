@@ -20,10 +20,11 @@ struct voice_ready_t;
 struct slashcommand_t;
 }
 
+class IMediaResolver;
 class ResolverWorker;
 class SongPlayer;
 
-struct PlaylistEntry; // WindowsProcessRunner.h
+struct PlaylistEntry; // IMediaResolver.h
 
 // Owns the song queue, the loop policy and the voice session.
 // =======================================================
@@ -85,7 +86,7 @@ public:
     // For the idle-timeout timer: says how long the bot has been useless.
     IdleInfo idleInfo();
 
-    PlaybackController();
+    explicit PlaybackController(std::shared_ptr<IMediaResolver> resolver_);
     ~PlaybackController();
 
     // Enqueues the given YouTube url. Returns 0 when the song will start
@@ -213,6 +214,7 @@ private:
     std::atomic<bool> running{true};
     std::thread workerThread;
 
+    std::shared_ptr<IMediaResolver> resolver;
     std::unique_ptr<SongPlayer> songPlayer;
     std::unique_ptr<ResolverWorker> resolverWorker;
 };

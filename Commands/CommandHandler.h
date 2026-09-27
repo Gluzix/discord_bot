@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <utility>
 
+class IMediaResolver;
 class PlaybackController;
 class VoiceRejoiner;
 
@@ -42,6 +43,7 @@ private:
     void setupBot();
 
     std::shared_ptr<dpp::cluster> bot;
+    std::shared_ptr<IMediaResolver> resolver;
     std::shared_ptr<PlaybackController> playback;
     std::shared_ptr<VoiceRejoiner> rejoiner;
     std::shared_ptr<CommandMap> commands{std::make_shared<CommandMap>()};
