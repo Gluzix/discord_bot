@@ -25,7 +25,7 @@ class cluster;
 // - dpp is called with no lock held, in every method: its voice teardown is
 //   slow and its events come back on other threads.
 // - Held by a shared_ptr made in CommandHandler::prepare():
-//   armLeaveTimeout()'s leave timeout runs on a dpp timer thread.
+//   armLeaveTimeout()'s leave timeout runs later, on a dpp thread.
 // =======================================================
 class VoiceRejoiner : public std::enable_shared_from_this<VoiceRejoiner>
 {
@@ -39,7 +39,7 @@ public:
     // confirmed, so the join can go out now.
     void onBotLeft(uint64_t guildId);
 
-    // A user's /leave: the bot was told to go, so stop trying to come back.
+    // /leave or a leave timer sent the bot away: stop trying to come back.
     void cancel(uint64_t guildId);
 
     void onVoiceReady(uint64_t guildId);

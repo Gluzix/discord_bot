@@ -1,6 +1,11 @@
 #pragma once
 
+#include "EmptyRoomClock.h"
+
+#include <cstdint>
+
 namespace dpp {
+class cluster;
 struct slashcommand_t;
 struct interaction_create_t;
 }
@@ -46,4 +51,7 @@ public:
     // True when nobody (except the bot itself) is in the bot's channel.
     // An audience of zero deserves no loyalty - anyone may take the bot.
     static bool botIsAloneInChannel(const dpp::interaction_create_t &event);
+
+    // What the bot's voice channel in the guild looks like right now.
+    static EmptyRoomClock::Channel botChannel(dpp::cluster &bot, uint64_t guildId);
 };

@@ -8,7 +8,6 @@
 #include "NowPlayingCommand.h"
 #include "PlayCommand.h"
 #include "PlaybackController.h"
-#include "Messages.h"
 #include "PauseCommand.h"
 #include "ResumeCommand.h"
 #include "LoopCommand.h"
@@ -17,6 +16,7 @@
 #include "SeekCommand.h"
 #include "PlaylistCommand.h"
 #include "VoiceRejoiner.h"
+#include "VoiceLeaver.h"
 #include "Interactions.h"
 #include <QDebug>
 #include <QString>
@@ -107,29 +107,10 @@ void CommandHandler::setupBot()
         playback->onBotVoiceStateChanged(event.state.channel_id);
     });
 
-    constexpr int64_t IDLE_TIMEOUT_SECONDS = 5 * 60;
-    bot->start_timer([bot = bot, playback = playback, rejoiner = rejoiner](dpp::timer) {
+    bot->start_timer([rejoiner = rejoiner,
+                      leaver = std::make_shared<VoiceLeaver>(*bot, playback, rejoiner)](dpp::timer) {
         rejoiner->tick();
-
-        PlaybackController::IdleInfo info = playback->idleInfo();
-        if (info.guildId == 0 || !info.idle || info.idleSinceSeconds == 0) {
-            return;
-        }
-
-        if (static_cast<int64_t>(time(nullptr)) - info.idleSinceSeconds < IDLE_TIMEOUT_SECONDS) {
-            return;
-        }
-
-        dpp::discord_client* shard = bot->get_shard(0);
-        if (shard == nullptr || shard->get_voice(info.guildId) == nullptr) {
-            return;
-        }
-
-        playback->stop();
-        shard->disconnect_voice(info.guildId);
-        if (info.textChannelId != 0) {
-            bot->message_create(dpp::message(info.textChannelId, messages::idleLeft));
-        }
+        leaver->tick();
     }, 30);
 
     bot->on_slashcommand([this](const dpp::slashcommand_t& event) {

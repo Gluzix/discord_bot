@@ -52,6 +52,7 @@ inline constexpr const char* skippedManySuffix = " songs!";
 inline constexpr const char* cannotLeave      = "Cannot leave, I'm not on the same channel as you!";
 inline constexpr const char* leaving          = "Okay, i'm leaving :(";
 inline constexpr const char* idleLeft         = "Nothing played for a while - I'm leaving the voice channel!";
+inline constexpr const char* aloneLeft        = "Nobody's listening - I'm leaving the voice channel!";
 inline constexpr const char* pause            = "Pausing currently playing song";
 inline constexpr const char* resume           = "Resuming currently paused song";
 inline constexpr const char* nothingToResume   = "Nothing to resume";
