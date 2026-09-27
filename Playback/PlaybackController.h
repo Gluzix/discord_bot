@@ -46,6 +46,9 @@ struct PlaylistEntry; // WindowsProcessRunner.h
 // - Whenever a song ends with nothing left to play, the idle clock starts and
 //   the failure streak ends: with the clock at 0 the idle timer never leaves
 //   the channel (playbackWorker(), skip(), stop()).
+// - A song's panel is retired in playbackWorker() unless makeReplay() handed
+//   it to a song-loop replay; a replay that stop() drops before it played
+//   keeps the row.
 // =======================================================
 class PlaybackController
 {
@@ -106,9 +109,15 @@ public:
     // nothing is playing. The worker thread stays alive for the next /play.
     void stop();
 
-    bool pause();
+    enum class PauseResult {
+        Done,
+        AlreadySo,      // pause(): already paused; resume(): already playing
+        NothingPlaying,
+    };
 
-    bool resume();
+    PauseResult pause();
+
+    PauseResult resume();
 
     bool isPaused();
 

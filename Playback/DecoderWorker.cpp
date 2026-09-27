@@ -3,6 +3,7 @@
 #include "Log.h"
 #include "Messages.h"
 #include "PlaybackButtons.h"
+#include "PlayingPanel.h"
 #include "WindowsProcessRunner.h"
 
 #include <QDebug>
@@ -84,7 +85,11 @@ void DecoderWorker::run()
         // kind of mention so a title like "@everyone" can't ping the server.
         nowPlaying.set_allowed_mentions();
         nowPlaying.add_component(buttons::controlRow());
-        notifyUser(nowPlaying);
+        song.panel = std::make_shared<PlayingPanel>(*song.event->owner, song.event->command.channel_id, nowPlaying.content);
+        // The answer can come after the song is gone.
+        notifyUser(nowPlaying, [panel = song.panel](const dpp::confirmation_callback_t &answer) {
+            panel->announced(answer);
+        });
     }
 
     decode();
@@ -93,16 +98,16 @@ void DecoderWorker::run()
 // A queued song announces itself in a fresh channel message, leaving its
 // "Queued at position N" reply intact as history (also immune to the
 // 15-minute interaction token limit).
-void DecoderWorker::notifyUser(dpp::message msg)
+void DecoderWorker::notifyUser(dpp::message msg, std::function<void(const dpp::confirmation_callback_t &)> onAnswer)
 {
     const bool announceInNewMessage = song.wasQueued;
     dpp::slashcommand_t &event = *song.event;
 
     if (announceInNewMessage) {
         msg.channel_id = event.command.channel_id;
-        event.owner->message_create(msg);
+        event.owner->message_create(msg, std::move(onAnswer));
     } else {
-        event.edit_original_response(msg);
+        event.edit_original_response(msg, std::move(onAnswer));
     }
 }
 
@@ -111,7 +116,7 @@ void DecoderWorker::fail(const char *msg)
     songFailed = true;
     // A held song's retries are quiet - the notice went out once.
     if (song.failedAttempts == 0) {
-        notifyUser(dpp::message(msg));
+        notifyUser(dpp::message(msg), dpp::utility::log_error());
     }
 }
 

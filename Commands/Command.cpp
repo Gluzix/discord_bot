@@ -2,6 +2,7 @@
 #include "VoiceConnector.h"
 #include "PlaybackController.h"
 #include "Interactions.h"
+#include "NowPlayingLine.h"
 
 #include <dpp/dpp.h>
 
@@ -37,9 +38,14 @@ void Command::execute(const dpp::button_click_t &event, const std::string &)
     interactions::refuse(event, messages::unknownButton);
 }
 
-void Command::reply(const dpp::interaction_create_t &event, const std::string &text)
+void Command::reply(const dpp::interaction_create_t &event, const std::string &text,
+                    PlaybackController &playback)
 {
-    interactions::reply(event, text);
+    std::string freshTitle;
+    if (nowplaying::isReply(event.command.msg.content)) {
+        freshTitle = nowplaying::line(playback.nowPlaying());
+    }
+    interactions::reply(event, text, freshTitle);
 }
 
 bool Command::userMayControl(const dpp::interaction_create_t &event, const char *refusalReply)

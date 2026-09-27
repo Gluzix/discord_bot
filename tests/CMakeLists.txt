@@ -17,9 +17,11 @@ add_bot_test(EmptyRoomClockTest EmptyRoomClockTest.cpp Check.h ../EmptyRoomClock
 add_bot_test(TimeTextTest TimeTextTest.cpp ../Helpers/TimeText.cpp)
 add_bot_test(PlaybackButtonsTest PlaybackButtonsTest.cpp Check.h ../Helpers/PlaybackButtons.cpp)
 add_bot_test(InteractionsTest InteractionsTest.cpp Check.h ../Helpers/Interactions.cpp ../Helpers/PlaybackButtons.cpp)
+add_bot_test(NowPlayingLineTest NowPlayingLineTest.cpp Check.h ../Commands/NowPlayingLine.cpp ../Helpers/TimeText.cpp)
 
 target_link_libraries(PlaybackButtonsTest PRIVATE dpp)
 target_link_libraries(InteractionsTest PRIVATE dpp Qt${QT_VERSION_MAJOR}::Core)
+target_include_directories(NowPlayingLineTest PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
 
 # dpp.dll needs the OpenSSL, opus and zlib DLLs shipped beside it, and Qt's bin
 # directory is on PATH only inside Qt Creator.

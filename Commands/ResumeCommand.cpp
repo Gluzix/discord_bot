@@ -29,9 +29,15 @@ void ResumeCommand::run(const dpp::interaction_create_t &event)
         return;
     }
 
-    if (playback->resume()) {
-        reply(event, messages::resume);
-    } else {
-        reply(event, messages::nothingToResume);
+    switch (playback->resume()) {
+    case PlaybackController::PauseResult::Done:
+        reply(event, messages::resume, *playback);
+        break;
+    case PlaybackController::PauseResult::AlreadySo:
+        reply(event, messages::alreadyPlaying, *playback);
+        break;
+    case PlaybackController::PauseResult::NothingPlaying:
+        reply(event, messages::nothingToResume, *playback);
+        break;
     }
 }

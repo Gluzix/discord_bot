@@ -28,9 +28,15 @@ void PauseCommand::run(const dpp::interaction_create_t &event)
         return;
     }
 
-    if (playback->pause()) {
-        reply(event, messages::pause);
-    } else {
-        reply(event, messages::nothingPlaying);
+    switch (playback->pause()) {
+    case PlaybackController::PauseResult::Done:
+        reply(event, messages::pause, *playback);
+        break;
+    case PlaybackController::PauseResult::AlreadySo:
+        reply(event, messages::alreadyPaused, *playback);
+        break;
+    case PlaybackController::PauseResult::NothingPlaying:
+        reply(event, messages::nothingPlaying, *playback);
+        break;
     }
 }

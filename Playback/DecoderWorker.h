@@ -10,6 +10,7 @@
 
 namespace dpp {
 struct message;
+struct confirmation_callback_t;
 }
 
 struct ResolvedMedia;
@@ -49,7 +50,7 @@ public:
 
 private:
     void run();
-    void notifyUser(dpp::message msg);
+    void notifyUser(dpp::message msg, std::function<void(const dpp::confirmation_callback_t &)> onAnswer);
     void fail(const char *msg);
     ResolvedMedia mediaToPlay();
     void decode();

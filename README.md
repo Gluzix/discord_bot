@@ -11,7 +11,7 @@ Built on [D++ (DPP)](https://dpp.dev) for Discord, FFmpeg for decoding, [yt-dlp]
 | `/play song:<link or title>` | Plays a YouTube link, or searches YouTube for a title and plays the first hit. Queues it if something is already playing. |
 | `/playlist link:<playlist link>` | Queues every video of a YouTube playlist (the first 100). |
 | `/queue` | Shows what's playing and what's waiting. |
-| `/nowplaying` | Shows the current song and how far into it playback is, with the "Playing:" buttons under it. |
+| `/nowplaying` | Shows the current song and how far into it playback is, with the "Playing:" buttons under it. A click on them brings the song and position up to date. |
 | `/skip [count]` | Skips the current song, or the current one plus the next `count-1`. |
 | `/stop` | Stops playback and clears the queue. |
 | `/pause` / `/resume` | What they say. |
@@ -22,7 +22,7 @@ Built on [D++ (DPP)](https://dpp.dev) for Discord, FFmpeg for decoding, [yt-dlp]
 | `/join` / `/leave` | Summon the bot to your voice channel, or send it away. |
 | `/ping` | Replies "ping test"; a quick check that the bot is up. |
 
-Every "Playing:" message carries a row of buttons: rewind 10 s, play/pause, forward 10 s and skip. They do what the matching commands do, to whatever is playing now and under the same rules. A click's answer becomes a status line under the song's title for everyone to see; a refusal is shown only to whoever clicked.
+Every "Playing:" message carries a row of buttons: rewind 10 s, play/pause, forward 10 s and skip. They do what the matching commands do, to whatever is playing now and under the same rules. A click's answer becomes a status line under the song's title for everyone to see; a refusal is shown only to whoever clicked. On a `/nowplaying` reply the click also shows the song and position as they are now. A "Playing:" message loses its buttons a few seconds after its song ends, a looping song's when the loop ends; a `/nowplaying` reply keeps them for whatever plays next.
 
 A few behaviours worth knowing:
 
@@ -45,7 +45,7 @@ slash command ──► Commands/*Command ──► PlaybackController
 ```
 
 - `Commands/` holds one small class per slash command. `CommandHandler` wires them up, registers them with Discord, and starts the leave timer.
-- `ButtonRouter` takes a click on a "Playing:" button to the command behind it, and `PlaybackButtons` builds that row and reads its ids. Those commands reply through `Interactions`, which puts a click's answer on the clicked message itself and shows a refusal to the clicker alone.
+- `ButtonRouter` takes a click on a "Playing:" button to the command behind it, and `PlaybackButtons` builds that row and reads its ids. Those commands reply through `Interactions`, which puts a click's answer on the clicked message itself and shows a refusal to the clicker alone. `NowPlayingLine` writes the first line of a `/nowplaying` reply, and a click there writes it anew. `PlayingPanel` takes the buttons off a "Playing:" message once its song is over.
 - `PlaybackController` owns the queue and the worker thread, which hands songs to `SongPlayer` one after another; `ResolverWorker` runs yt-dlp ahead of time on its own thread so the next song starts without a pause.
 - `SongPlayer` commands one song. `DecoderWorker` resolves, announces and decodes it on one thread, `SenderWorker` paces the packets into the voice client on another, and `PcmBuffer` sits between them: the bounded PCM queue plus the seek handshake.
 - `PcmResampler` turns a media URL into 48 kHz 16-bit stereo PCM using FFmpeg, in packets of exactly the size DPP wants. It knows nothing about threads or Discord.
@@ -96,7 +96,7 @@ The bot logs to the console and to `logs/discord_bot-<date>-<time>.log` in the d
 
 Pull requests are reviewed automatically by a Claude workflow in `.github/workflows/claude-review.yml`; it comments on the whole diff when a PR is opened, then on just the new commits after every push to it. Feature work happens on branches and lands through PRs.
 
-The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons and the interaction replies. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
+The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies and the `/nowplaying` line. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
 
 The codebase carries a few hard-won rules that are easy to break by accident:
 

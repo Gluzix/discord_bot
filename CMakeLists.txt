@@ -43,6 +43,7 @@ add_executable(discord_bot
   Commands/SkipCommand.h Commands/SkipCommand.cpp
   Commands/QueueCommand.h Commands/QueueCommand.cpp
   Commands/NowPlayingCommand.h Commands/NowPlayingCommand.cpp
+  Commands/NowPlayingLine.h Commands/NowPlayingLine.cpp
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
   Runner/WindowsProcessRunner.h Runner/WindowsProcessRunner.cpp
@@ -67,6 +68,7 @@ add_executable(discord_bot
   Helpers/YoutubeInput.h Helpers/YoutubeInput.cpp
   Helpers/PlaybackButtons.h Helpers/PlaybackButtons.cpp
   Helpers/Interactions.h Helpers/Interactions.cpp
+  Helpers/PlayingPanel.h Helpers/PlayingPanel.cpp
   Playback/ResolverWorker.h Playback/ResolverWorker.cpp
   Playback/SongPlayer.h Playback/SongPlayer.cpp
   Playback/VoiceDrainWatchdog.h Playback/VoiceDrainWatchdog.cpp

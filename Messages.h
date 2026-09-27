@@ -54,7 +54,9 @@ inline constexpr const char* leaving          = "Okay, i'm leaving :(";
 inline constexpr const char* idleLeft         = "Nothing played for a while - I'm leaving the voice channel!";
 inline constexpr const char* aloneLeft        = "Nobody's listening - I'm leaving the voice channel!";
 inline constexpr const char* pause            = "Pausing currently playing song";
+inline constexpr const char* alreadyPaused    = "It's already paused!";
 inline constexpr const char* resume           = "Resuming currently paused song";
+inline constexpr const char* alreadyPlaying   = "It's already playing!";
 inline constexpr const char* nothingToResume   = "Nothing to resume";
 
 // /forward, /rewind, /seek
@@ -77,6 +79,7 @@ inline constexpr const char* queueNowPlayingPrefix = "Now playing: ";
 inline constexpr const char* queueMorePrefix       = "...and ";
 inline constexpr const char* queueMoreSuffix       = " more";
 inline constexpr const char* nowPlayingPausedSuffix = " (paused)";
+inline constexpr const char* nowPlayingNothing     = "Now playing: nothing";
 
 // playback buttons
 inline constexpr const char* unknownButton = "That button doesn't work any more - use the slash commands!";

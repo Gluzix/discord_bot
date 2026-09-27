@@ -21,7 +21,9 @@ namespace interactions {
 int64_t ageMs(const dpp::interaction_create_t &event);
 
 // The result, shown to everyone; a click rewrites the status line under the title so the row stays put.
-void reply(const dpp::interaction_create_t &event, const std::string &text);
+// freshTitle, when given, replaces the clicked message's first line.
+void reply(const dpp::interaction_create_t &event, const std::string &text,
+           const std::string &freshTitle = {});
 
 // For the clicker's eyes only; a slash command answers the channel.
 void refuse(const dpp::interaction_create_t &event, const std::string &text);

@@ -51,11 +51,11 @@ void RewindCommand::run(const dpp::interaction_create_t &event, int seconds)
 
     PlaybackController::SeekResult result = playback->seekBy(-seconds);
     if (!result.playing) {
-        reply(event, messages::nothingPlaying);
+        reply(event, messages::nothingPlaying, *playback);
     } else if (!result.seekable) {
-        reply(event, messages::songStillLoading);
+        reply(event, messages::songStillLoading, *playback);
     } else {
         reply(event, messages::rewoundTo
-                     + timetext::formatProgress(result.positionSeconds, result.durationSeconds));
+                     + timetext::formatProgress(result.positionSeconds, result.durationSeconds), *playback);
     }
 }
