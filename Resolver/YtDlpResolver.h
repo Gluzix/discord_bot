@@ -40,7 +40,7 @@ private:
     std::shared_ptr<IProcessRunner> runner;
     std::string program;
 
-    static const int YT_DLP_TIMEOUT_SECONDS = 60;
+    static constexpr int YT_DLP_TIMEOUT_SECONDS = 60;
     static const std::vector<std::string> YT_DLP_SONG_ARGS;
     static const std::vector<std::string> YT_DLP_SEARCH_ARGS;
     static const std::string SEARCH_PREFIX;
