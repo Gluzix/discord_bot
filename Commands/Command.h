@@ -41,8 +41,10 @@ public:
     void execute(const dpp::button_click_t &event, const std::string &argument) override;
 
 protected:
-    // A command's result, answered through interactions::reply.
-    static void reply(const dpp::interaction_create_t &event, const std::string &text);
+    // A command's result, answered through interactions::reply; a click on a
+    // /nowplaying reply gets that reply's first line rendered anew.
+    static void reply(const dpp::interaction_create_t &event, const std::string &text,
+                      PlaybackController &playback);
 
     // Replies with the refusal and returns false when control is denied.
     bool userMayControl(const dpp::interaction_create_t &event, const char *refusalReply = messages::mustBeWithBot);

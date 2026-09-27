@@ -31,13 +31,13 @@ void ResumeCommand::run(const dpp::interaction_create_t &event)
 
     switch (playback->resume()) {
     case PlaybackController::PauseResult::Done:
-        reply(event, messages::resume);
+        reply(event, messages::resume, *playback);
         break;
     case PlaybackController::PauseResult::AlreadySo:
-        reply(event, messages::alreadyPlaying);
+        reply(event, messages::alreadyPlaying, *playback);
         break;
     case PlaybackController::PauseResult::NothingPlaying:
-        reply(event, messages::nothingToResume);
+        reply(event, messages::nothingToResume, *playback);
         break;
     }
 }

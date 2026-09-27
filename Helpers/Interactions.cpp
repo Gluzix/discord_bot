@@ -24,7 +24,7 @@ int64_t ageMs(const dpp::interaction_create_t &event)
         std::chrono::system_clock::now().time_since_epoch() - issuedAt).count();
 }
 
-void reply(const dpp::interaction_create_t &event, const std::string &text)
+void reply(const dpp::interaction_create_t &event, const std::string &text, const std::string &freshTitle)
 {
     if (!isClick(event)) {
         event.reply(dpp::message(text));
@@ -33,7 +33,9 @@ void reply(const dpp::interaction_create_t &event, const std::string &text)
 
     const dpp::message &clicked = event.command.msg;
     std::string content = text;
-    if (clicked.content.empty()) {
+    if (!freshTitle.empty()) {
+        content = freshTitle + '\n' + text;
+    } else if (clicked.content.empty()) {
         qWarning() << "A click came without its message - the status line replaces the title";
     } else {
         content = clicked.content.substr(0, clicked.content.find('\n')) + '\n' + text;

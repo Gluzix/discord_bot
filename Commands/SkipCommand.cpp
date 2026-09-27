@@ -47,10 +47,10 @@ void SkipCommand::run(const dpp::interaction_create_t &event, size_t count)
 
     size_t skipped = playback->skip(count);
     if (skipped == 0) {
-        reply(event, messages::nothingPlaying);
+        reply(event, messages::nothingPlaying, *playback);
     } else if (skipped == 1) {
-        reply(event, messages::skipped);
+        reply(event, messages::skipped, *playback);
     } else {
-        reply(event, messages::skippedManyPrefix + std::to_string(skipped) + messages::skippedManySuffix);
+        reply(event, messages::skippedManyPrefix + std::to_string(skipped) + messages::skippedManySuffix, *playback);
     }
 }

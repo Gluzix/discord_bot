@@ -98,6 +98,26 @@ int main()
               "second click: the status line is replaced, not appended");
     }
 
+    { // a click on a /nowplaying reply gets its first line anew
+        const std::string stale = "Now playing: **[Song](<https://www.youtube.com/watch?v=x>)** - 0:10 / 3:45";
+        const std::string fresh = "Now playing: **[Song](<https://www.youtube.com/watch?v=x>)** - 1:30 / 3:45 (paused)";
+        const dpp::button_click_t event = click(clickedMessage(stale + "\nForwarded to 0:10 / 3:45"));
+        interactions::reply(event, "Pausing currently playing song", fresh);
+        const dpp::json sent = answer(event);
+        check(sent["type"] == dpp::ir_update_message, "fresh title: UPDATE_MESSAGE (7)");
+        check(sent["data"]["content"] == fresh + "\nPausing currently playing song",
+              "fresh title: it replaces the first line, the status line follows");
+        check(isOurRow(sent["data"]["components"]), "fresh title: the clicked row goes back unchanged");
+        check(sent["data"]["allowed_mentions"]["parse"].empty(), "fresh title: no mention is parsed");
+    }
+
+    { // an empty fresh title is none
+        const dpp::button_click_t event = click(clickedMessage(title + "\nSkipped!"));
+        interactions::reply(event, "Forwarded to 1:30 / 3:45", "");
+        check(answer(event)["data"]["content"] == title + "\nForwarded to 1:30 / 3:45",
+              "no fresh title: the clicked title stays");
+    }
+
     { // the click came without its message
         const dpp::button_click_t event = click(dpp::message());
         interactions::reply(event, "Skipped!");
@@ -124,6 +144,9 @@ int main()
         check(sent["type"] == dpp::ir_channel_message_with_source && sent["data"]["flags"] == 0
               && sent["data"]["content"] == "Forwarded to 1:30 / 3:45",
               "slash result: a public channel reply");
+        interactions::reply(event, "Forwarded to 1:30 / 3:45", "Now playing: nothing");
+        sent = answer(event);
+        check(sent["data"]["content"] == "Forwarded to 1:30 / 3:45", "slash result: a fresh title is ignored");
         interactions::refuse(event, "You need to be in my voice channel to control the music!");
         sent = answer(event);
         check(sent["type"] == dpp::ir_channel_message_with_source && sent["data"]["flags"] == 0,
