@@ -44,14 +44,14 @@ slash command ──► Commands/*Command ──► PlaybackController
                       decoder thread: PcmResampler (FFmpeg) ──► PcmBuffer ──► sender thread ──► DPP ──► Discord
 ```
 
-- `Commands/` holds one small class per slash command. `CommandHandler` wires them up, registers them with Discord, and owns the leave timers.
+- `Commands/` holds one small class per slash command. `CommandHandler` wires them up, registers them with Discord, and starts the leave timer.
 - `ButtonRouter` takes a click on a "Playing:" button to the command behind it, and `PlaybackButtons` builds that row and reads its ids. Those commands reply through `Interactions`, which puts a click's answer on the clicked message itself and shows a refusal to the clicker alone.
 - `PlaybackController` owns the queue and the worker thread, which hands songs to `SongPlayer` one after another; `ResolverWorker` runs yt-dlp ahead of time on its own thread so the next song starts without a pause.
 - `SongPlayer` commands one song. `DecoderWorker` resolves, announces and decodes it on one thread, `SenderWorker` paces the packets into the voice client on another, and `PcmBuffer` sits between them: the bounded PCM queue plus the seek handshake.
 - `PcmResampler` turns a media URL into 48 kHz 16-bit stereo PCM using FFmpeg, in packets of exactly the size DPP wants. It knows nothing about threads or Discord.
 - `ChunkedSource` fetches the stream for FFmpeg in bounded ranges: googlevideo serves those at full speed but throttles an open-ended read to about twice the audio bitrate.
 - `WindowsProcessRunner` runs yt-dlp and parses its output. `VoiceConnector` handles joining channels and the audience rule. `Labels` and `Messages` hold every reply the user sees.
-- `VoiceDrainWatchdog` spots a voice client that stopped draining, and `VoiceRejoiner` replaces a lost voice session by leaving and rejoining the channel. `EmptyRoomClock` says when the bot has been alone in its channel long enough to leave. `FailureStreak` tells a broken song from a broken network: one failure drops the song, failures back to back keep it for a retry.
+- `VoiceDrainWatchdog` spots a voice client that stopped draining, and `VoiceRejoiner` replaces a lost voice session by leaving and rejoining the channel. `VoiceLeaver` leaves the voice channel once the bot has been idle or alone for too long, and `EmptyRoomClock` tells it when alone has lasted long enough. `FailureStreak` tells a broken song from a broken network: one failure drops the song, failures back to back keep it for a retry.
 - `CtrlMainServer` starts the bot with the token `TokenReader` reads from `token.json`, and shuts it down on Ctrl+C. `Log` writes the log files, `TimeText` reads and prints song positions, and `YoutubeInput` keeps user input to plain YouTube links and tame search text before it reaches the yt-dlp command line.
 
 ## Requirements

@@ -49,6 +49,7 @@ add_executable(discord_bot
   Playback/PlaybackController.h Playback/PlaybackController.cpp
   VoiceConnector.h VoiceConnector.cpp
   VoiceRejoiner.h VoiceRejoiner.cpp
+  VoiceLeaver.h VoiceLeaver.cpp
   EmptyRoomClock.h EmptyRoomClock.cpp
   Messages.h
   Commands/PauseCommand.h Commands/PauseCommand.cpp
