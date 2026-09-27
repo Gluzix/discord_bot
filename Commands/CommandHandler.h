@@ -20,6 +20,8 @@ class VoiceRejoiner;
 // - While a rejoin is pending, setupBot()'s voice-state handler hands the
 //   bot's own leave to rejoiner->onBotLeft(): playback must not see it, or it
 //   would stop the song and wipe the queue.
+// - Every handler in setupBot() captures shared_ptrs, never this: dpp runs
+//   them on its pool threads, which nothing joins before this object dies.
 // =======================================================
 class CommandHandler
 {
@@ -33,7 +35,7 @@ private:
     void add(Args&&... args)
     {
         auto cmd = std::make_unique<T>(std::forward<Args>(args)...);
-        commands.emplace(cmd->name(), std::move(cmd));
+        commands->emplace(cmd->name(), std::move(cmd));
     }
 
     void setupCommands();
@@ -42,6 +44,6 @@ private:
     std::shared_ptr<dpp::cluster> bot;
     std::shared_ptr<PlaybackController> playback;
     std::shared_ptr<VoiceRejoiner> rejoiner;
-    std::unordered_map<std::string, std::unique_ptr<ICommand>> commands{};
-    std::unique_ptr<ButtonRouter> buttonRouter;
+    std::shared_ptr<CommandMap> commands{std::make_shared<CommandMap>()};
+    std::shared_ptr<ButtonRouter> buttonRouter;
 };

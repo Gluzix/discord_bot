@@ -42,7 +42,7 @@ void CommandHandler::prepare()
     }
 
     setupCommands();
-    buttonRouter = std::make_unique<ButtonRouter>(commands, playback);
+    buttonRouter = std::make_shared<ButtonRouter>(commands, playback);
     setupBot();
 }
 
@@ -113,10 +113,10 @@ void CommandHandler::setupBot()
         leaver->tick();
     }, 30);
 
-    bot->on_slashcommand([this](const dpp::slashcommand_t& event) {
+    bot->on_slashcommand([commands = commands](const dpp::slashcommand_t& event) {
         const QString name = QString::fromStdString("/" + event.command.get_command_name());
-        auto command = commands.find(event.command.get_command_name());
-        if (command == commands.end()) {
+        auto command = commands->find(event.command.get_command_name());
+        if (command == commands->end()) {
             qDebug().noquote() << name << "is not a known command, ignored";
             return;
         }
@@ -130,20 +130,20 @@ void CommandHandler::setupBot()
                                   std::chrono::steady_clock::now() - startedAt).count() << "ms";
     });
 
-    bot->on_button_click([this](const dpp::button_click_t& event) {
+    bot->on_button_click([buttonRouter = buttonRouter](const dpp::button_click_t& event) {
         buttonRouter->handle(event);
     });
 
-    bot->on_ready([this](const dpp::ready_t& event) {
+    bot->on_ready([commands = commands](const dpp::ready_t& event) {
         if (dpp::run_once<struct register_bot_commands>()) {
             // Bulk create OVERWRITES the guild-visible command set, so
             // commands deleted from the code also disappear from Discord
             // instead of lingering as dead entries.
             std::vector<dpp::slashcommand> definitions;
-            for (const auto &[name, command] : commands) {
-                definitions.push_back(command->definition(bot->me.id));
+            for (const auto &[name, command] : *commands) {
+                definitions.push_back(command->definition(event.owner->me.id));
             }
-            bot->global_bulk_command_create(definitions);
+            event.owner->global_bulk_command_create(definitions);
         }
     });
 }

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <memory>
 #include <string>
+#include <unordered_map>
 
 namespace dpp {
 struct slashcommand_t;
@@ -25,3 +27,5 @@ public:
     // A click on one of its buttons; argument comes from the button's id ("10" in forward:10).
     virtual void execute(const dpp::button_click_t &event, const std::string &argument) = 0;
 };
+
+using CommandMap = std::unordered_map<std::string, std::unique_ptr<ICommand>>;
