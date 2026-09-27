@@ -4,6 +4,7 @@
 #include "Labels.h"
 #include "SongPlayer.h"
 #include "ResolverWorker.h"
+#include "PlayingPanel.h"
 #include "Log.h"
 
 #include <dpp/dpp.h>
@@ -433,6 +434,7 @@ void PlaybackController::playbackWorker()
         uint64_t lostGuildId = 0;
         uint64_t lostChannelId = 0;
         bool announceHold = false;
+        bool loopReplayQueued = false;
         {
             std::lock_guard<std::mutex> lock(stateMutex);
 
@@ -479,6 +481,7 @@ void PlaybackController::playbackWorker()
                 }
             } else if (sessionAlive && loopMode == LoopMode::Song && endedNaturally) {
                 songQueue.push_front(makeReplay(song, true));
+                loopReplayQueued = true;
             } else if (sessionAlive && loopMode == LoopMode::Queue && ok) {
                 songQueue.push_back(makeReplay(song, false));
             }
@@ -493,6 +496,10 @@ void PlaybackController::playbackWorker()
         }
         // stop() may be waiting for the song threads to be fully joined.
         stateCv.notify_all();
+
+        if (!loopReplayQueued && running) {
+            PlayingPanel::retire(song.panel);
+        }
 
         // The local song still owns its event - the retry got a copy.
         if (announceHold) {
@@ -519,6 +526,9 @@ Song PlaybackController::makeReplay(const Song &song, bool loopReplay)
     replay.directUrl = song.directUrl;
     replay.resolvedAtSeconds = song.resolvedAtSeconds;
     replay.isLoopReplay = loopReplay;
+    if (loopReplay) {
+        replay.panel = song.panel;
+    }
     replay.fromPlaylist = song.fromPlaylist;
     return replay;
 }

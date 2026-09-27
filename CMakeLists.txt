@@ -68,6 +68,7 @@ add_executable(discord_bot
   Helpers/YoutubeInput.h Helpers/YoutubeInput.cpp
   Helpers/PlaybackButtons.h Helpers/PlaybackButtons.cpp
   Helpers/Interactions.h Helpers/Interactions.cpp
+  Helpers/PlayingPanel.h Helpers/PlayingPanel.cpp
   Playback/ResolverWorker.h Playback/ResolverWorker.cpp
   Playback/SongPlayer.h Playback/SongPlayer.cpp
   Playback/VoiceDrainWatchdog.h Playback/VoiceDrainWatchdog.cpp

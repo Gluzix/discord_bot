@@ -7,12 +7,15 @@ namespace dpp {
 struct slashcommand_t;
 }
 
+class PlayingPanel;
+
 struct Song
 {
     uint64_t id{0};
     std::string target; // youtube url or "ytsearch1:<query>"
     bool wasQueued{false}; // waited in the queue vs started right away
     std::unique_ptr<dpp::slashcommand_t> event;
+    std::shared_ptr<PlayingPanel> panel; // its "Playing:" message, from the announcement on
 
     // Filled by the resolver thread ahead of time; empty until then.
     std::string title;
