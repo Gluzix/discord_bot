@@ -182,26 +182,32 @@ dpp::discord_voice_client* PlaybackController::clientIfSongInProgress()
     return songInProgress ? currentVoiceClient : nullptr;
 }
 
-bool PlaybackController::pause()
+PlaybackController::PauseResult PlaybackController::pause()
 {
     dpp::discord_voice_client *voiceClient = clientIfSongInProgress();
-    if (voiceClient && !voiceClient->is_paused()) {
-        voiceClient->pause_audio(true);
-        return true;
+    if (!voiceClient) {
+        return PauseResult::NothingPlaying;
+    }
+    if (voiceClient->is_paused()) {
+        return PauseResult::AlreadySo;
     }
 
-    return false;
+    voiceClient->pause_audio(true);
+    return PauseResult::Done;
 }
 
-bool PlaybackController::resume()
+PlaybackController::PauseResult PlaybackController::resume()
 {
     dpp::discord_voice_client *voiceClient = clientIfSongInProgress();
-    if (voiceClient && voiceClient->is_paused()) {
-        voiceClient->pause_audio(false);
-        return true;
+    if (!voiceClient) {
+        return PauseResult::NothingPlaying;
+    }
+    if (!voiceClient->is_paused()) {
+        return PauseResult::AlreadySo;
     }
 
-    return false;
+    voiceClient->pause_audio(false);
+    return PauseResult::Done;
 }
 
 bool PlaybackController::isPaused()

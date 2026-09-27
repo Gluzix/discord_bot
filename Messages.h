@@ -54,7 +54,9 @@ inline constexpr const char* leaving          = "Okay, i'm leaving :(";
 inline constexpr const char* idleLeft         = "Nothing played for a while - I'm leaving the voice channel!";
 inline constexpr const char* aloneLeft        = "Nobody's listening - I'm leaving the voice channel!";
 inline constexpr const char* pause            = "Pausing currently playing song";
+inline constexpr const char* alreadyPaused    = "It's already paused!";
 inline constexpr const char* resume           = "Resuming currently paused song";
+inline constexpr const char* alreadyPlaying   = "It's already playing!";
 inline constexpr const char* nothingToResume   = "Nothing to resume";
 
 // /forward, /rewind, /seek

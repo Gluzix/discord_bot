@@ -106,9 +106,15 @@ public:
     // nothing is playing. The worker thread stays alive for the next /play.
     void stop();
 
-    bool pause();
+    enum class PauseResult {
+        Done,
+        AlreadySo,      // pause(): already paused; resume(): already playing
+        NothingPlaying,
+    };
 
-    bool resume();
+    PauseResult pause();
+
+    PauseResult resume();
 
     bool isPaused();
 
