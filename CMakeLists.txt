@@ -46,6 +46,7 @@ add_executable(discord_bot
   Commands/NowPlayingLine.h Commands/NowPlayingLine.cpp
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
+  Runner/WindowsCommandLine.h Runner/WindowsCommandLine.cpp
   Runner/WindowsProcessRunner.h Runner/WindowsProcessRunner.cpp
   Playback/PlaybackController.h Playback/PlaybackController.cpp
   VoiceConnector.h VoiceConnector.cpp

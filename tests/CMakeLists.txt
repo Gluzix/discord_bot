@@ -4,7 +4,8 @@ set(CMAKE_AUTORCC OFF)
 
 function(add_bot_test name)
     add_executable(${name} ${ARGN})
-    target_include_directories(${name} PRIVATE "${CMAKE_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/Helpers" "${CMAKE_SOURCE_DIR}/Playback")
+    target_include_directories(${name} PRIVATE "${CMAKE_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/Helpers" "${CMAKE_SOURCE_DIR}/Playback"
+        "${CMAKE_SOURCE_DIR}/Runner")
     # The bot gets /utf-8 from Qt; dpp's unicode_emoji.h needs it.
     target_compile_options(${name} PRIVATE /utf-8 /we4715)
     add_test(NAME ${name} COMMAND ${name})
@@ -18,6 +19,7 @@ add_bot_test(TimeTextTest TimeTextTest.cpp ../Helpers/TimeText.cpp)
 add_bot_test(PlaybackButtonsTest PlaybackButtonsTest.cpp Check.h ../Helpers/PlaybackButtons.cpp)
 add_bot_test(InteractionsTest InteractionsTest.cpp Check.h ../Helpers/Interactions.cpp ../Helpers/PlaybackButtons.cpp)
 add_bot_test(NowPlayingLineTest NowPlayingLineTest.cpp Check.h ../Commands/NowPlayingLine.cpp ../Helpers/TimeText.cpp)
+add_bot_test(WindowsCommandLineTest WindowsCommandLineTest.cpp Check.h ../Runner/WindowsCommandLine.cpp)
 
 target_link_libraries(PlaybackButtonsTest PRIVATE dpp)
 target_link_libraries(InteractionsTest PRIVATE dpp Qt${QT_VERSION_MAJOR}::Core)
