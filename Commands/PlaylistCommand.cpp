@@ -1,15 +1,17 @@
 #include "PlaylistCommand.h"
 #include "PlaybackController.h"
 #include "VoiceConnector.h"
-#include "WindowsProcessRunner.h"
+#include "IMediaResolver.h"
 #include "YoutubeInput.h"
 #include "Messages.h"
 
 #include <dpp/dpp.h>
 
-PlaylistCommand::PlaylistCommand(std::shared_ptr<PlaybackController> playback_)
+PlaylistCommand::PlaylistCommand(std::shared_ptr<PlaybackController> playback_,
+                                 std::shared_ptr<IMediaResolver> resolver_)
     : Command("playlist", "queues every video of a youtube playlist")
     , playback(playback_)
+    , resolver(resolver_)
 {
 }
 
@@ -46,7 +48,7 @@ void PlaylistCommand::execute(const dpp::slashcommand_t &event)
     event.reply(messages::readingPlaylist);
 
     const size_t MAX_ENTRIES = 100;
-    PlaylistListing listing = WindowsProcessRunner::listPlaylist(link, MAX_ENTRIES);
+    PlaylistListing listing = resolver->listPlaylist(link, MAX_ENTRIES);
     if (listing.entries.empty()) {
         event.edit_original_response(dpp::message(messages::playlistEmpty));
         return;

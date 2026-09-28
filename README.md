@@ -50,7 +50,7 @@ slash command ──► Commands/*Command ──► PlaybackController
 - `SongPlayer` commands one song. `DecoderWorker` resolves, announces and decodes it on one thread, `SenderWorker` paces the packets into the voice client on another, and `PcmBuffer` sits between them: the bounded PCM queue plus the seek handshake.
 - `PcmResampler` turns a media URL into 48 kHz 16-bit stereo PCM using FFmpeg, in packets of exactly the size DPP wants. It knows nothing about threads or Discord.
 - `ChunkedSource` fetches the stream for FFmpeg in bounded ranges: googlevideo serves those at full speed but throttles an open-ended read to about twice the audio bitrate.
-- `WindowsProcessRunner` runs yt-dlp and parses its output. `VoiceConnector` handles joining channels and the audience rule. `Labels` and `Messages` hold every reply the user sees.
+- `YtDlpResolver` builds yt-dlp's command lines and reads its answers behind `IMediaResolver`, and `WindowsProcessRunner` runs the process behind `IProcessRunner`. `VoiceConnector` handles joining channels and the audience rule. `Labels` and `Messages` hold every reply the user sees.
 - `VoiceDrainWatchdog` spots a voice client that stopped draining, and `VoiceRejoiner` replaces a lost voice session by leaving and rejoining the channel. `VoiceLeaver` leaves the voice channel once the bot has been idle or alone for too long, and `EmptyRoomClock` tells it when alone has lasted long enough. `FailureStreak` tells a broken song from a broken network: one failure drops the song, failures back to back keep it for a retry.
 - `CtrlMainServer` starts the bot with the token `TokenReader` reads from `token.json`, and shuts it down on Ctrl+C. `Log` writes the log files, `TimeText` reads and prints song positions, and `YoutubeInput` keeps user input to plain YouTube links and tame search text before it reaches the yt-dlp command line.
 
@@ -96,7 +96,7 @@ The bot logs to the console and to `logs/discord_bot-<date>-<time>.log` in the d
 
 Pull requests are reviewed automatically by a Claude workflow in `.github/workflows/claude-review.yml`; it comments on the whole diff when a PR is opened, then on just the new commits after every push to it. Feature work happens on branches and lands through PRs.
 
-The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies and the `/nowplaying` line. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
+The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies, the `/nowplaying` line, the Windows command line quoting and the yt-dlp resolver. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
 
 The codebase carries a few hard-won rules that are easy to break by accident:
 

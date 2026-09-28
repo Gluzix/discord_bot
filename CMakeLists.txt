@@ -46,7 +46,11 @@ add_executable(discord_bot
   Commands/NowPlayingLine.h Commands/NowPlayingLine.cpp
   Commands/PlayCommand.h Commands/PlayCommand.cpp
 
+  Runner/IProcessRunner.h
+  Runner/WindowsCommandLine.h Runner/WindowsCommandLine.cpp
   Runner/WindowsProcessRunner.h Runner/WindowsProcessRunner.cpp
+  Resolver/IMediaResolver.h
+  Resolver/YtDlpResolver.h Resolver/YtDlpResolver.cpp
   Playback/PlaybackController.h Playback/PlaybackController.cpp
   VoiceConnector.h VoiceConnector.cpp
   VoiceRejoiner.h VoiceRejoiner.cpp
@@ -85,6 +89,7 @@ target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Helpers")
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Playback")
 target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Runner")
+target_include_directories(discord_bot PRIVATE "${CMAKE_SOURCE_DIR}/Resolver")
 target_include_directories(discord_bot PRIVATE
     ${FFMPEG_INCLUDE_DIRS}
     "C:/vcpkg/installed/x64-windows/include"

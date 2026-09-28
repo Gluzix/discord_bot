@@ -4,8 +4,9 @@
 
 #include <dpp/dpp.h>
 
-SongPlayer::SongPlayer(std::function<void(std::string)> onLabelResolved_)
-    : onLabelResolved(std::move(onLabelResolved_))
+SongPlayer::SongPlayer(IMediaResolver &resolver_, std::function<void(std::string)> onLabelResolved_)
+    : resolver(resolver_)
+    , onLabelResolved(std::move(onLabelResolved_))
 {
 }
 
@@ -18,7 +19,7 @@ SongPlayer::Outcome SongPlayer::play(dpp::discord_voice_client *voiceClient, Son
 {
     pcmBuffer.reset();
 
-    DecoderWorker decoder(pcmBuffer, song, onLabelResolved);
+    DecoderWorker decoder(pcmBuffer, song, resolver, onLabelResolved);
     SenderWorker sender(pcmBuffer, voiceClient);
 
     sender.join();

@@ -1,5 +1,5 @@
 #include "PlaybackController.h"
-#include "WindowsProcessRunner.h"
+#include "IMediaResolver.h"
 #include "Messages.h"
 #include "Labels.h"
 #include "SongPlayer.h"
@@ -13,13 +13,14 @@
 #include <algorithm>
 #include <chrono>
 
-PlaybackController::PlaybackController()
+PlaybackController::PlaybackController(std::shared_ptr<IMediaResolver> resolver_)
+    : resolver(std::move(resolver_))
 {
-    songPlayer = std::make_unique<SongPlayer>([this](std::string label) {
+    songPlayer = std::make_unique<SongPlayer>(*resolver, [this](std::string label) {
         std::lock_guard<std::mutex> lock(stateMutex);
         currentSongLabel = std::move(label);
     });
-    resolverWorker = std::make_unique<ResolverWorker>(songQueue, stateCv, stateMutex);
+    resolverWorker = std::make_unique<ResolverWorker>(*resolver, songQueue, stateCv, stateMutex);
     workerThread = std::thread(&PlaybackController::playbackWorker, this);
 }
 

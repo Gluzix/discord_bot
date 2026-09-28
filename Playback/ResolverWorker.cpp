@@ -4,7 +4,7 @@
 #include <mutex>
 #include <string>
 
-#include "WindowsProcessRunner.h"
+#include "IMediaResolver.h"
 #include "Messages.h"
 #include "Song.h"
 #include "Labels.h"
@@ -14,13 +14,15 @@
 #include <QDebug>
 
 // Only a short lookahead - direct urls expire within hours, so resolving a
-// 100-song playlist up front would be a hundred wasted yt-dlp runs.
+// 100-song playlist up front would be a hundred wasted resolves.
 constexpr size_t LOOKAHEAD = 5;
 
-ResolverWorker::ResolverWorker(std::deque<Song> &songQueue_,
+ResolverWorker::ResolverWorker(IMediaResolver &resolver_,
+                               std::deque<Song> &songQueue_,
                                std::condition_variable &stateCv_,
                                std::mutex &stateMutex_)
-    : songQueue(songQueue_)
+    : resolver(resolver_)
+    , songQueue(songQueue_)
     , stateCv(stateCv_)
     , stateMutex(stateMutex_)
 {
@@ -84,7 +86,7 @@ void ResolverWorker::resolveSongs(const uint64_t songId, const std::string &targ
     std::string label;
     size_t position = 0;
 
-    ResolvedMedia media = WindowsProcessRunner::resolveMedia(target, [this] { return !running.load(); });
+    ResolvedMedia media = resolver.resolveMedia(target, [this] { return !running.load(); });
     {
         std::lock_guard<std::mutex> lock(stateMutex);
         for (size_t i = 0; i < songQueue.size(); ++i) {
