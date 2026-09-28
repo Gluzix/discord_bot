@@ -11,7 +11,7 @@
 
 #include <chrono>
 
-ButtonRouter::ButtonRouter(const std::unordered_map<std::string, std::unique_ptr<ICommand>> &commands_,
+ButtonRouter::ButtonRouter(std::shared_ptr<const CommandMap> commands_,
                            std::shared_ptr<PlaybackController> playback_)
     : commands(commands_)
     , playback(playback_)
@@ -29,8 +29,8 @@ void ButtonRouter::handle(const dpp::button_click_t &event)
     if (click && click->command == buttons::PLAY_PAUSE) {
         click->command = playback->isPaused() ? "resume" : "pause";
     }
-    auto command = click ? commands.find(click->command) : commands.end();
-    if (command == commands.end()) {
+    auto command = click ? commands->find(click->command) : commands->end();
+    if (command == commands->end()) {
         qDebug().noquote() << name << "is not a known button";
         interactions::refuse(event, messages::unknownButton);
         return;
