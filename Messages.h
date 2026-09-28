@@ -81,9 +81,14 @@ inline constexpr const char* queueMoreSuffix       = " more";
 inline constexpr const char* nowPlayingPausedSuffix = " (paused)";
 inline constexpr const char* nowPlayingNothing     = "Now playing: nothing";
 
-// /shuffle
+// /shuffle, /remove
 inline constexpr const char* shuffled         = "Shuffled the queue!";
 inline constexpr const char* nothingToShuffle = "There's nothing to shuffle!";
+inline constexpr const char* removedPrefix    = "Removed ";
+inline constexpr const char* removedSuffix    = " from the queue.";
+inline constexpr const char* noSuchPosition   = "There's no song at that position - check /queue!";
+inline constexpr const char* removeHeld       = "That one is being retried - use /skip for it!";
+inline constexpr const char* removeUpNext     = "That one is about to play - use /skip once it does!";
 
 // playback buttons
 inline constexpr const char* unknownButton = "That button doesn't work any more - use the slash commands!";

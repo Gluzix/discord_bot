@@ -16,6 +16,7 @@
 #include "SeekCommand.h"
 #include "PlaylistCommand.h"
 #include "ShuffleCommand.h"
+#include "RemoveCommand.h"
 #include "VoiceRejoiner.h"
 #include "VoiceLeaver.h"
 #include "Interactions.h"
@@ -68,6 +69,7 @@ void CommandHandler::setupCommands()
     add<SeekCommand>(playback);
     add<PlaylistCommand>(playback, resolver);
     add<ShuffleCommand>(playback);
+    add<RemoveCommand>(playback);
 }
 
 void CommandHandler::setupBot()

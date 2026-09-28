@@ -65,6 +65,7 @@ add_executable(discord_bot
   Commands/SeekCommand.h Commands/SeekCommand.cpp
   Commands/PlaylistCommand.h Commands/PlaylistCommand.cpp
   Commands/ShuffleCommand.h Commands/ShuffleCommand.cpp
+  Commands/RemoveCommand.h Commands/RemoveCommand.cpp
   Commands/ButtonRouter.h Commands/ButtonRouter.cpp
   Playback/PcmResampler.h Playback/PcmResampler.cpp
   Helpers/Labels.h Helpers/Labels.cpp

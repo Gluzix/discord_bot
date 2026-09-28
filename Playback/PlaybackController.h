@@ -48,7 +48,7 @@ struct PlaylistEntry; // IMediaResolver.h
 //   known-good.
 // - Whenever a song ends with nothing left to play, the idle clock starts and
 //   the failure streak ends: with the clock at 0 the idle timer never leaves
-//   the channel (playbackWorker(), skip(), stop()).
+//   the channel (playbackWorker(), skip(), stop(), remove()).
 // - A song's panel is retired in playbackWorker() unless makeReplay() handed
 //   it to a song-loop replay; a replay that stop() drops before it played
 //   keeps the row.
@@ -115,6 +115,15 @@ public:
     // Shuffles the waiting songs and returns how many took part; fewer than
     // two means nothing changed.
     size_t shuffle();
+
+    struct RemoveResult
+    {
+        queueedit::RemoveOutcome outcome{queueedit::RemoveOutcome::NoSuchPosition};
+        std::string label; // rendered markdown of the song taken out
+    };
+
+    // Takes the waiting song at position (from 1, as /queue numbers them) out.
+    RemoveResult remove(size_t position);
 
     enum class PauseResult {
         Done,

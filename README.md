@@ -12,6 +12,7 @@ Built on [D++ (DPP)](https://dpp.dev) for Discord, FFmpeg for decoding, [yt-dlp]
 | `/playlist link:<playlist link>` | Queues every video of a YouTube playlist (the first 100). |
 | `/queue` | Shows what's playing and what's waiting. |
 | `/shuffle` | Puts the waiting songs in a random order; the current song plays on. |
+| `/remove position:<n>` | Takes the song numbered `n` in `/queue` out of the queue. |
 | `/nowplaying` | Shows the current song and how far into it playback is, with the "Playing:" buttons under it. A click on them brings the song and position up to date. |
 | `/skip [count]` | Skips the current song, or the current one plus the next `count-1`. |
 | `/stop` | Stops playback and clears the queue. |

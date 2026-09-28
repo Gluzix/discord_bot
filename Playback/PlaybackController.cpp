@@ -189,6 +189,25 @@ size_t PlaybackController::shuffle()
     return shuffled;
 }
 
+PlaybackController::RemoveResult PlaybackController::remove(size_t position)
+{
+    RemoveResult result;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        const queueedit::Removal removal = queueedit::remove(songQueue, position);
+        result.outcome = removal.outcome;
+        if (removal.song) {
+            result.label = labels::render(removal.song->title, removal.song->webpageUrl, removal.song->target);
+            if (songQueue.empty() && !songInProgress) {
+                idleSinceSeconds = static_cast<int64_t>(time(nullptr));
+                failureStreak.reset();
+            }
+        }
+    }
+    stateCv.notify_all();
+    return result;
+}
+
 dpp::discord_voice_client* PlaybackController::clientIfSongInProgress()
 {
     std::lock_guard<std::mutex> lock(stateMutex);
