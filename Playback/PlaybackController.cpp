@@ -178,6 +178,17 @@ void PlaybackController::stop()
     }
 }
 
+size_t PlaybackController::shuffle()
+{
+    size_t shuffled = 0;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        shuffled = queueedit::shuffle(songQueue, shuffleRng);
+    }
+    stateCv.notify_all();
+    return shuffled;
+}
+
 dpp::discord_voice_client* PlaybackController::clientIfSongInProgress()
 {
     std::lock_guard<std::mutex> lock(stateMutex);

@@ -15,6 +15,7 @@
 #include "RewindCommand.h"
 #include "SeekCommand.h"
 #include "PlaylistCommand.h"
+#include "ShuffleCommand.h"
 #include "VoiceRejoiner.h"
 #include "VoiceLeaver.h"
 #include "Interactions.h"
@@ -66,6 +67,7 @@ void CommandHandler::setupCommands()
     add<RewindCommand>(playback);
     add<SeekCommand>(playback);
     add<PlaylistCommand>(playback, resolver);
+    add<ShuffleCommand>(playback);
 }
 
 void CommandHandler::setupBot()

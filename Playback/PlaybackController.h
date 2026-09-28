@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FailureStreak.h"
+#include "QueueEdit.h"
 #include "Song.h"
 
 #include <atomic>
@@ -10,6 +11,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -109,6 +111,10 @@ public:
     // Stops the current song and clears the whole queue. Safe to call when
     // nothing is playing. The worker thread stays alive for the next /play.
     void stop();
+
+    // Shuffles the waiting songs and returns how many took part; fewer than
+    // two means nothing changed.
+    size_t shuffle();
 
     enum class PauseResult {
         Done,
@@ -211,6 +217,7 @@ private:
     std::function<void(uint64_t, uint64_t)> voiceLostHandler;
     VoiceClientLookup voiceClientLookup;
     uint64_t nextSongId{1};
+    std::mt19937 shuffleRng{std::random_device{}()};
     std::atomic<bool> running{true};
     std::thread workerThread;
 

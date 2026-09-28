@@ -81,6 +81,10 @@ inline constexpr const char* queueMoreSuffix       = " more";
 inline constexpr const char* nowPlayingPausedSuffix = " (paused)";
 inline constexpr const char* nowPlayingNothing     = "Now playing: nothing";
 
+// /shuffle
+inline constexpr const char* shuffled         = "Shuffled the queue!";
+inline constexpr const char* nothingToShuffle = "There's nothing to shuffle!";
+
 // playback buttons
 inline constexpr const char* unknownButton = "That button doesn't work any more - use the slash commands!";
 
