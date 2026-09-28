@@ -77,6 +77,7 @@ add_executable(discord_bot
   Playback/SongPlayer.h Playback/SongPlayer.cpp
   Playback/VoiceDrainWatchdog.h Playback/VoiceDrainWatchdog.cpp
   Playback/FailureStreak.h Playback/FailureStreak.cpp
+  Playback/QueueEdit.h Playback/QueueEdit.cpp
   Playback/Song.h
   Playback/ChunkedSource.h Playback/ChunkedSource.cpp
   Playback/PcmBuffer.h Playback/PcmBuffer.cpp
