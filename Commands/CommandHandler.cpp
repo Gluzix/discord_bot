@@ -17,6 +17,7 @@
 #include "PlaylistCommand.h"
 #include "ShuffleCommand.h"
 #include "RemoveCommand.h"
+#include "ReplayCommand.h"
 #include "VoiceRejoiner.h"
 #include "VoiceLeaver.h"
 #include "Interactions.h"
@@ -70,6 +71,7 @@ void CommandHandler::setupCommands()
     add<PlaylistCommand>(playback, resolver);
     add<ShuffleCommand>(playback);
     add<RemoveCommand>(playback);
+    add<ReplayCommand>(playback);
 }
 
 void CommandHandler::setupBot()

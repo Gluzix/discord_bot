@@ -15,6 +15,7 @@ Built on [D++ (DPP)](https://dpp.dev) for Discord, FFmpeg for decoding, [yt-dlp]
 | `/remove position:<n>` | Takes the song numbered `n` in `/queue` out of the queue. |
 | `/nowplaying` | Shows the current song and how far into it playback is, with the "Playing:" buttons under it. A click on them brings the song and position up to date. |
 | `/skip [count]` | Skips the current song, or the current one plus the next `count-1`. |
+| `/replay` | Starts the current song over. |
 | `/stop` | Stops playback and clears the queue. |
 | `/pause` / `/resume` | What they say. |
 | `/loop mode:<song\|queue\|off>` | Repeat the current song, rotate the whole queue, or stop looping. |
