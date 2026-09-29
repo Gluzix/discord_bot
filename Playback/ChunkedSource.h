@@ -19,7 +19,20 @@ struct AVDictionary;
 class ChunkedSource
 {
 public:
-    ChunkedSource();
+    explicit ChunkedSource(std::string url_);
+    ~ChunkedSource();
+
+    ChunkedSource(const ChunkedSource &) = delete;
+    ChunkedSource &operator=(const ChunkedSource &) = delete;
+
+    static int readCallback(void *opaque, uint8_t *buf, int size);
+    static int64_t seekCallback(void *opaque, int64_t offset, int whence);
+
+private:
+    bool fetchChunkAt(int64_t offset);
+    int read(uint8_t *buf, int size);
+    int64_t seek(int64_t offset, int whence);
+
     static constexpr int64_t FIRST_CHUNK_BYTES = 256 * 1024;  // small: audio starts fast even on a slow link
     static constexpr int64_t CHUNK_BYTES = 2 * 1024 * 1024;   // ~2 minutes of 128kbps audio
 
@@ -29,13 +42,4 @@ public:
     int64_t position{0};        // next byte the demuxer will read
     int64_t chunkStart{0};
     std::vector<uint8_t> chunk; // bytes [chunkStart, chunkStart + chunk.size())
-
-    ~ChunkedSource();
-
-    static int readCallback(void *opaque, uint8_t *buf, int size);
-    static int64_t seekCallback(void *opaque, int64_t offset, int whence);
-
-    bool fetchChunkAt(int64_t offset);
-    int read(uint8_t *buf, int size);
-    int64_t seek(int64_t offset, int whence);
 };

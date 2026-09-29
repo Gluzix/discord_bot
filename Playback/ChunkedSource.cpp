@@ -8,15 +8,21 @@
 #include <cstdio>
 #include <algorithm>
 #include <chrono>
+#include <utility>
 
 extern "C" {
 #include <libavutil/dict.h>
-#include <libavformat/avformat.h>
 #include <libavformat/avio.h>
 #include <libavutil/error.h>
 }
 
-ChunkedSource::ChunkedSource() {}
+ChunkedSource::ChunkedSource(std::string url_)
+    : url(std::move(url_))
+{
+    av_dict_set(&httpOptions, "headers",
+                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n",
+                0);
+}
 
 ChunkedSource::~ChunkedSource()
 {

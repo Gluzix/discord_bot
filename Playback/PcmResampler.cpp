@@ -10,7 +10,6 @@
 #include <cstring>
 
 extern "C" {
-#include <libavutil/dict.h>
 #include <libavutil/error.h>
 #include <libavutil/frame.h>
 #include <libavutil/mem.h>
@@ -48,11 +47,7 @@ PcmResampler::~PcmResampler()
 
 PcmResampler::Result PcmResampler::open(const std::string &directUrl)
 {
-    source = std::make_unique<ChunkedSource>();
-    source->url = directUrl;
-    av_dict_set(&source->httpOptions, "headers",
-                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n",
-                0);
+    source = std::make_unique<ChunkedSource>(directUrl);
 
     const int IO_BUFFER_BYTES = 64 * 1024;
     avio = avio_alloc_context(static_cast<uint8_t *>(av_malloc(IO_BUFFER_BYTES)), IO_BUFFER_BYTES, 0,
