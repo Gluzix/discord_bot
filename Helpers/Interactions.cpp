@@ -8,6 +8,8 @@
 
 namespace {
 
+constexpr int64_t TOKEN_ALIVE_SECONDS = 14 * 60;
+
 bool isClick(const dpp::interaction_create_t &event)
 {
     return event.command.type == dpp::it_component_button;
@@ -22,6 +24,11 @@ int64_t ageMs(const dpp::interaction_create_t &event)
     const std::chrono::duration<double> issuedAt(event.command.id.get_creation_time());
     return std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch() - issuedAt).count();
+}
+
+bool tokenAlive(const dpp::interaction_create_t &event, int64_t nowSeconds)
+{
+    return nowSeconds - event.command.id.get_creation_time() < TOKEN_ALIVE_SECONDS;
 }
 
 void reply(const dpp::interaction_create_t &event, const std::string &text, const std::string &freshTitle)

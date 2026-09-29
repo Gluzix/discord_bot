@@ -57,6 +57,12 @@ static dpp::slashcommand_t slash()
     return event;
 }
 
+// A snowflake's top bits count milliseconds from 2015-01-01, Discord's epoch.
+static dpp::snowflake idMadeAt(uint64_t unixSeconds)
+{
+    return dpp::snowflake((unixSeconds * 1000 - 1420070400000ull) << 22);
+}
+
 static bool isOurRow(const dpp::json &components)
 {
     if (components.size() != 1 || components[0]["type"] != 1 || components[0]["components"].size() != 4) {
@@ -151,6 +157,17 @@ int main()
         sent = answer(event);
         check(sent["type"] == dpp::ir_channel_message_with_source && sent["data"]["flags"] == 0,
               "slash refusal: a public channel reply, as before");
+    }
+
+    { // the token of a reply
+        const int64_t madeAt = 1790000000;
+        dpp::slashcommand_t event = slash();
+        event.command.id = idMadeAt(madeAt);
+        check(event.command.id.get_creation_time() == madeAt, "token: the id carries the time the interaction was made");
+        check(interactions::tokenAlive(event, madeAt + 14 * 60 - 1), "token: 13:59 after the interaction it can be edited");
+        check(!interactions::tokenAlive(event, madeAt + 14 * 60), "token: 14:00 after, it is too old");
+        event.command.id = 0;
+        check(!interactions::tokenAlive(event, madeAt), "token: an interaction without an id is too old");
     }
 
     return summary();
