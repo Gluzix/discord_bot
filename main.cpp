@@ -2,6 +2,8 @@
 #include "Log.h"
 
 #include <cstdlib>
+#include <filesystem>
+#include <string>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -26,19 +28,23 @@ static bool environmentVariableIsSet(const char* name)
 // CA store on Windows - without one, every connection fails with "Malformed
 // HTTP response". libcrypto is a release binary, so its getenv() reads the
 // release CRT's (ucrtbase.dll) environment cache - which a debug exe's
-// _putenv_s never touches.
+// _putenv_s never touches. OpenSSL opens the path as UTF-8.
 static void pointOpenSslAtBundledCertificates()
 {
     if (environmentVariableIsSet("SSL_CERT_FILE")) {
         return;
     }
 
-    _putenv_s("SSL_CERT_FILE", "cacert.pem");
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    const std::string certificates = std::filesystem::path(exePath).replace_filename("cacert.pem").u8string();
+
+    _putenv_s("SSL_CERT_FILE", certificates.c_str());
 
     typedef int (__cdecl *PutEnvFn)(const char*, const char*);
     if (HMODULE releaseCrt = GetModuleHandleA("ucrtbase.dll")) {
         if (auto putEnvInReleaseCrt = (PutEnvFn)GetProcAddress(releaseCrt, "_putenv_s")) {
-            putEnvInReleaseCrt("SSL_CERT_FILE", "cacert.pem");
+            putEnvInReleaseCrt("SSL_CERT_FILE", certificates.c_str());
         }
     }
 }
