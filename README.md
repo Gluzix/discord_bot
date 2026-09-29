@@ -99,7 +99,7 @@ The bot logs to the console and to `logs/discord_bot-<date>-<time>.log` in the d
 
 Pull requests are reviewed automatically by a Claude workflow in `.github/workflows/claude-review.yml`; it comments on the whole diff when a PR is opened, then on just the new commits after every push to it. Feature work happens on branches and lands through PRs.
 
-The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies, the `/nowplaying` line, the `/queue` text, the Windows command line quoting, the yt-dlp resolver and the queue edits behind `/shuffle` and `/remove`. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
+The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies, the `/nowplaying` line, the `/queue` text, the Windows command line quoting, the log files, the yt-dlp resolver and the queue edits behind `/shuffle` and `/remove`. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
 
 The codebase carries a few hard-won rules that are easy to break by accident:
 
