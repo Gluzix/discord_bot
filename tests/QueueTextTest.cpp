@@ -108,6 +108,13 @@ int main()
         check(text.size() == 1868, "the 15th at 129: 1868 characters");
     }
 
+    { // the 15th fits, but not with ...and 10 more
+        const std::vector<std::string> queued = labels(25, 128);
+        const std::string text = queuetext::render(waiting(queued));
+        check(text == lines(queued, 14) + "...and 11 more\n", "25 labels of 128: 14 of them, then ...and 11 more");
+        check(text.size() == 1868, "25 labels of 128: 1868 characters");
+    }
+
     { // two songs at exactly 2000
         const std::vector<std::string> queued = labels(2, 996);
         const std::string text = queuetext::render(waiting(queued));
@@ -126,6 +133,11 @@ int main()
     { // a first song too long for any message
         const std::vector<std::string> queued = {std::string(2001, 'a'), std::string(10, 'a')};
         check(queuetext::render(waiting(queued)) == "...and 2 more\n", "a label of 2001 first: ...and 2 more alone");
+    }
+
+    { // a first song that fits, but not with ...and 1 more
+        const std::vector<std::string> queued = {std::string(1983, 'a'), std::string(10, 'a')};
+        check(queuetext::render(waiting(queued)) == "...and 2 more\n", "a label of 1983 first: ...and 2 more alone");
     }
 
     { // Cyrillic titles: 2 bytes, 1 UTF-16 unit each
