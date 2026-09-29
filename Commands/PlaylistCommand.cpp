@@ -62,7 +62,7 @@ void PlaylistCommand::execute(const dpp::slashcommand_t &event)
     std::string text = messages::playlistQueuedPrefix + std::to_string(queued)
         + (queued == 1 ? messages::playlistQueuedOne : messages::playlistQueuedMany)
         + "[" + name + "](<" + link + ">)";
-    if (listing.totalCount > queued) {
+    if (listing.totalCount > MAX_ENTRIES) {
         text += messages::playlistTruncatedPrefix + std::to_string(listing.totalCount) + messages::playlistTruncatedSuffix;
     }
     dpp::message summary(text);
