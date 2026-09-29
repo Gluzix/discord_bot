@@ -93,9 +93,10 @@ ResolvedMedia YtDlpResolver::resolveMedia(const std::string &target, const Cance
 
 PlaylistListing YtDlpResolver::listPlaylist(const std::string &playlistUrl, size_t maxEntries)
 {
-    // --flat-playlist lists entries without extracting any video, so even a
-    // 6000-video playlist answers in a few seconds. Each entry prints as a
-    // url/title line pair; the "playlist:" prints come once, after them.
+    // --flat-playlist lists entries without extracting any video: a hundred
+    // take 2 to 10 seconds. Nothing is printed before the last page asked
+    // for is fetched. Each entry prints as a url/title line pair; the
+    // "playlist:" prints come once, after them.
     const std::vector<std::string> arguments = {
         "--flat-playlist", "--no-warnings", "--socket-timeout", "10", "--encoding", "utf-8",
         "--playlist-items", ":" + std::to_string(maxEntries),
