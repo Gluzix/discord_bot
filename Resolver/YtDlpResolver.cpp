@@ -1,8 +1,10 @@
 #include "YtDlpResolver.h"
+#include "YoutubeInput.h"
 
 #include <QDebug>
 #include <QString>
 #include <cstdlib>
+#include <unordered_set>
 #include <utility>
 
 const std::vector<std::string> YtDlpResolver::YT_DLP_SONG_ARGS = {
@@ -117,6 +119,8 @@ PlaylistListing YtDlpResolver::listPlaylist(const std::string &playlistUrl, size
 
     const std::string titleMarker = "PLAYLIST_TITLE=";
     const std::string countMarker = "PLAYLIST_COUNT=";
+    const bool mix = youtube::isMixUrl(playlistUrl);
+    std::unordered_set<std::string> keptUrls;
     std::string pendingUrl;
     for (const std::string &line : run.lines) {
         if (line.rfind(titleMarker, 0) == 0) {
@@ -128,8 +132,10 @@ PlaylistListing YtDlpResolver::listPlaylist(const std::string &playlistUrl, size
             pendingUrl = line;
         } else {
             // YouTube keeps placeholder entries for videos nobody can play.
-            // A private one now shows up with no title at all ("NA").
-            if (line != "[Private video]" && line != "[Deleted video]" && line != "NA") {
+            // A private one now shows up with no title at all ("NA"). A mix
+            // comes back round to songs it already had.
+            if (line != "[Private video]" && line != "[Deleted video]" && line != "NA"
+                && (!mix || keptUrls.insert(pendingUrl).second)) {
                 listing.entries.push_back({pendingUrl, line});
             }
             pendingUrl.clear();

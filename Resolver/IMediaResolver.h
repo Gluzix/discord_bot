@@ -49,7 +49,8 @@ public:
     virtual ResolvedMedia resolveMedia(const std::string &target, const CancelCheck &cancelled) = 0;
 
     // Lists the first maxEntries videos of a YouTube playlist without
-    // resolving any of them. Private and deleted videos are left out.
+    // resolving any of them. Private and deleted videos are left out, and
+    // so are the repeats of a mix.
     // A listing that timed out comes back empty, with timedOut set.
     virtual PlaylistListing listPlaylist(const std::string &playlistUrl, size_t maxEntries) = 0;
 };

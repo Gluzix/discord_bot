@@ -59,3 +59,8 @@ bool youtube::isPlaylistPageUrl(const std::string &url)
 {
     return isPlaylistUrl(url) && url.find("/playlist?") != std::string::npos;
 }
+
+bool youtube::isMixUrl(const std::string &url)
+{
+    return url.find("?list=RD") != std::string::npos || url.find("&list=RD") != std::string::npos;
+}

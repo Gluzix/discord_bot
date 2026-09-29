@@ -88,11 +88,11 @@ static ResolvedMedia resolveSong(const Output &answer)
     return YtDlpResolver(runner, YT_DLP).resolveMedia(SONG, {});
 }
 
-static PlaylistListing listPlaylist(std::vector<std::string> lines)
+static PlaylistListing listPlaylist(std::vector<std::string> lines, const std::string &link = PLAYLIST)
 {
     auto runner = std::make_shared<ScriptedRunner>();
     runner->script = {ended(0, std::move(lines))};
-    return YtDlpResolver(runner, YT_DLP).listPlaylist(PLAYLIST, 100);
+    return YtDlpResolver(runner, YT_DLP).listPlaylist(link, 100);
 }
 
 static bool is(const PlaylistEntry &entry, const std::string &webpageUrl, const std::string &title)
@@ -252,6 +252,36 @@ int main()
         check(listing.entries.size() == 1 && is(listing.entries[0], "https://www.youtube.com/watch?v=a", "Song A")
                   && listing.title == "Mix" && listing.totalCount == 250,
               "ended with an error: the entry, title and count are read");
+    }
+
+    { // a mix
+        const std::vector<std::string> lines = {
+            "https://www.youtube.com/watch?v=a", "Song A",
+            "https://www.youtube.com/watch?v=b", "NA",
+            "https://www.youtube.com/watch?v=c", "Song C",
+            "https://www.youtube.com/watch?v=a", "Song A",
+            "https://www.youtube.com/watch?v=b", "Song B",
+            "PLAYLIST_TITLE=Mix - Song A", "PLAYLIST_COUNT=NA"};
+        const PlaylistListing mix = listPlaylist(lines, "https://www.youtube.com/watch?v=a&list=RDa&start_radio=1");
+        check(mix.entries.size() == 3 && is(mix.entries[0], "https://www.youtube.com/watch?v=a", "Song A")
+                  && is(mix.entries[1], "https://www.youtube.com/watch?v=c", "Song C")
+                  && is(mix.entries[2], "https://www.youtube.com/watch?v=b", "Song B"),
+              "a mix: repeats left out, the first playable one kept, in order");
+        check(listPlaylist(lines).entries.size() == 4, "a playlist: its repeats stay");
+    }
+
+    { // which links are mixes
+        const std::vector<std::string> twice = {
+            "https://www.youtube.com/watch?v=a", "Song A",
+            "https://www.youtube.com/watch?v=a", "Song A"};
+        check(listPlaylist(twice, "https://www.youtube.com/playlist?list=RDCLAK5uy_a").entries.size() == 1,
+              "list=RD first in the query: a mix");
+        check(listPlaylist(twice, "https://youtu.be/a?si=b&list=RDa&index=3").entries.size() == 1,
+              "list=RD further on in the query: a mix");
+        check(listPlaylist(twice, "https://www.youtube.com/watch?v=RDa&list=PLa").entries.size() == 2,
+              "RD in another parameter: no mix");
+        check(listPlaylist(twice, "https://www.youtube.com/watch?v=a&playlist=RDa&list=PLa").entries.size() == 2,
+              "a parameter whose name ends in list: no mix");
     }
 
     return summary();

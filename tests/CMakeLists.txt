@@ -21,7 +21,7 @@ add_bot_test(InteractionsTest InteractionsTest.cpp Check.h ../Helpers/Interactio
 add_bot_test(NowPlayingLineTest NowPlayingLineTest.cpp Check.h ../Commands/NowPlayingLine.cpp ../Helpers/TimeText.cpp)
 add_bot_test(QueueTextTest QueueTextTest.cpp Check.h ../Commands/QueueText.cpp)
 add_bot_test(WindowsCommandLineTest WindowsCommandLineTest.cpp Check.h ../Runner/WindowsCommandLine.cpp)
-add_bot_test(YtDlpResolverTest YtDlpResolverTest.cpp Check.h ../Resolver/YtDlpResolver.cpp)
+add_bot_test(YtDlpResolverTest YtDlpResolverTest.cpp Check.h ../Resolver/YtDlpResolver.cpp ../Helpers/YoutubeInput.cpp)
 add_bot_test(QueueEditTest QueueEditTest.cpp Check.h ../Playback/QueueEdit.cpp)
 add_bot_test(LogTest LogTest.cpp Check.h ../Helpers/Log.cpp)
 
