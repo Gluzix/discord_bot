@@ -14,7 +14,8 @@
 //   points Discord counts; bytes would leave out Cyrillic or Japanese
 //   titles that fit.
 // - render() writes the "Now playing:" line unmeasured: YouTube caps a
-//   title at 100 characters, so one label is a few hundred at most.
+//   title at 100 characters and YoutubeInput a link at 250, so one label
+//   is a few hundred at most.
 // =======================================================
 namespace queuetext {
 
