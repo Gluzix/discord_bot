@@ -18,7 +18,12 @@ void PlayingPanel::announced(const dpp::confirmation_callback_t &answer)
                              << QString::fromStdString(answer.get_error().message);
         return;
     }
-    messageId = static_cast<uint64_t>(answer.get<dpp::message>().id);
+    const uint64_t id = static_cast<uint64_t>(answer.get<dpp::message>().id);
+    if (id == 0) {
+        qWarning() << "No id came back for the \"Playing:\" message - its buttons, if any, stay";
+        return;
+    }
+    messageId = id;
 }
 
 void PlayingPanel::retire(const std::shared_ptr<PlayingPanel> &panel)

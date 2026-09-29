@@ -19,6 +19,9 @@ struct confirmation_callback_t;
 //   controls whatever plays.
 // - retire() finds no message id when dpp's answer to the announcement is
 //   later than the edit; the row stays then.
+// - announced() takes an answer without a message id for a failure:
+//   dpp 10.1.6's is_error() passes a request that timed out as a success,
+//   with an empty message.
 // - retire() sends the title again: dpp's message_edit always sends a text,
 //   so the status line of the last click goes with the buttons.
 // =======================================================
