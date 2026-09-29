@@ -113,7 +113,7 @@ int main()
     // A name outside the code page; without u8path it would be read in the code page.
     std::error_code error;
     const std::filesystem::path directory =
-        std::filesystem::temp_directory_path(error) / std::filesystem::u8path(u8"discord_bot_LogTest_Жук");
+        std::filesystem::temp_directory_path(error) / std::filesystem::u8path(u8"discord_bot_LogTest_\u0416\u0443\u043A");
     std::filesystem::remove_all(directory, error);
     std::filesystem::create_directories(directory / "logs", error);
     std::filesystem::current_path(directory, error);
