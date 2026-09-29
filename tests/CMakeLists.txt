@@ -19,6 +19,7 @@ add_bot_test(TimeTextTest TimeTextTest.cpp ../Helpers/TimeText.cpp)
 add_bot_test(PlaybackButtonsTest PlaybackButtonsTest.cpp Check.h ../Helpers/PlaybackButtons.cpp)
 add_bot_test(InteractionsTest InteractionsTest.cpp Check.h ../Helpers/Interactions.cpp ../Helpers/PlaybackButtons.cpp)
 add_bot_test(NowPlayingLineTest NowPlayingLineTest.cpp Check.h ../Commands/NowPlayingLine.cpp ../Helpers/TimeText.cpp)
+add_bot_test(QueueTextTest QueueTextTest.cpp Check.h ../Commands/QueueText.cpp)
 add_bot_test(WindowsCommandLineTest WindowsCommandLineTest.cpp Check.h ../Runner/WindowsCommandLine.cpp)
 add_bot_test(YtDlpResolverTest YtDlpResolverTest.cpp Check.h ../Resolver/YtDlpResolver.cpp)
 add_bot_test(QueueEditTest QueueEditTest.cpp Check.h ../Playback/QueueEdit.cpp)
@@ -28,6 +29,7 @@ target_link_libraries(InteractionsTest PRIVATE dpp Qt${QT_VERSION_MAJOR}::Core)
 target_link_libraries(YtDlpResolverTest PRIVATE Qt${QT_VERSION_MAJOR}::Core)
 target_link_libraries(QueueEditTest PRIVATE dpp)
 target_include_directories(NowPlayingLineTest PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
+target_include_directories(QueueTextTest PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
 
 # dpp.dll needs the OpenSSL, opus and zlib DLLs shipped beside it, and Qt's bin
 # directory is on PATH only inside Qt Creator.
