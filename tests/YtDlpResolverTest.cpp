@@ -268,6 +268,9 @@ int main()
                   && is(mix.entries[2], "https://www.youtube.com/watch?v=b", "Song B"),
               "a mix: repeats left out, the first playable one kept, in order");
         check(listPlaylist(lines).entries.size() == 4, "a playlist: its repeats stay");
+        check(listPlaylist({"https://www.youtube.com/watch?v=a", "Song A", "https://www.youtube.com/watch?v=d", "Song A"},
+                           "https://www.youtube.com/watch?v=a&list=RDa&start_radio=1").entries.size() == 2,
+              "a mix: another video with the same title stays");
     }
 
     { // which links are mixes
