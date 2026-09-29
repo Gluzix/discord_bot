@@ -11,8 +11,11 @@ Built on [D++ (DPP)](https://dpp.dev) for Discord, FFmpeg for decoding, [yt-dlp]
 | `/play song:<link or title>` | Plays a YouTube link, or searches YouTube for a title and plays the first hit. Queues it if something is already playing. |
 | `/playlist link:<playlist link>` | Queues every video of a YouTube playlist (the first 100). |
 | `/queue` | Shows what's playing and what's waiting. |
+| `/shuffle` | Puts the waiting songs in a random order; the current song plays on. |
+| `/remove position:<n>` | Takes the song numbered `n` in `/queue` out of the queue. |
 | `/nowplaying` | Shows the current song and how far into it playback is, with the "Playing:" buttons under it. A click on them brings the song and position up to date. |
 | `/skip [count]` | Skips the current song, or the current one plus the next `count-1`. |
+| `/replay` | Starts the current song over. |
 | `/stop` | Stops playback and clears the queue. |
 | `/pause` / `/resume` | What they say. |
 | `/loop mode:<song\|queue\|off>` | Repeat the current song, rotate the whole queue, or stop looping. |
@@ -51,7 +54,7 @@ slash command ──► Commands/*Command ──► PlaybackController
 - `PcmResampler` turns a media URL into 48 kHz 16-bit stereo PCM using FFmpeg, in packets of exactly the size DPP wants. It knows nothing about threads or Discord.
 - `ChunkedSource` fetches the stream for FFmpeg in bounded ranges: googlevideo serves those at full speed but throttles an open-ended read to about twice the audio bitrate.
 - `YtDlpResolver` builds yt-dlp's command lines and reads its answers behind `IMediaResolver`, and `WindowsProcessRunner` runs the process behind `IProcessRunner`. `VoiceConnector` handles joining channels and the audience rule. `Labels` and `Messages` hold every reply the user sees.
-- `VoiceDrainWatchdog` spots a voice client that stopped draining, and `VoiceRejoiner` replaces a lost voice session by leaving and rejoining the channel. `VoiceLeaver` leaves the voice channel once the bot has been idle or alone for too long, and `EmptyRoomClock` tells it when alone has lasted long enough. `FailureStreak` tells a broken song from a broken network: one failure drops the song, failures back to back keep it for a retry.
+- `VoiceDrainWatchdog` spots a voice client that stopped draining, and `VoiceRejoiner` replaces a lost voice session by leaving and rejoining the channel. `VoiceLeaver` leaves the voice channel once the bot has been idle or alone for too long, and `EmptyRoomClock` tells it when alone has lasted long enough. `FailureStreak` tells a broken song from a broken network: one failure drops the song, failures back to back keep it for a retry. `QueueEdit` is what `/shuffle` and `/remove` do to the waiting songs; a song about to play, or held for a retry, stays at the front.
 - `CtrlMainServer` starts the bot with the token `TokenReader` reads from `token.json`, and shuts it down on Ctrl+C. `Log` writes the log files, `TimeText` reads and prints song positions, and `YoutubeInput` keeps user input to plain YouTube links and tame search text before it reaches the yt-dlp command line.
 
 ## Requirements
@@ -96,7 +99,7 @@ The bot logs to the console and to `logs/discord_bot-<date>-<time>.log` in the d
 
 Pull requests are reviewed automatically by a Claude workflow in `.github/workflows/claude-review.yml`; it comments on the whole diff when a PR is opened, then on just the new commits after every push to it. Feature work happens on branches and lands through PRs.
 
-The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies, the `/nowplaying` line, the Windows command line quoting and the yt-dlp resolver. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
+The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies, the `/nowplaying` line, the Windows command line quoting, the yt-dlp resolver and the queue edits behind `/shuffle` and `/remove`. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
 
 The codebase carries a few hard-won rules that are easy to break by accident:
 

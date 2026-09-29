@@ -64,6 +64,9 @@ add_executable(discord_bot
   Commands/RewindCommand.h Commands/RewindCommand.cpp
   Commands/SeekCommand.h Commands/SeekCommand.cpp
   Commands/PlaylistCommand.h Commands/PlaylistCommand.cpp
+  Commands/ShuffleCommand.h Commands/ShuffleCommand.cpp
+  Commands/RemoveCommand.h Commands/RemoveCommand.cpp
+  Commands/ReplayCommand.h Commands/ReplayCommand.cpp
   Commands/ButtonRouter.h Commands/ButtonRouter.cpp
   Playback/PcmResampler.h Playback/PcmResampler.cpp
   Helpers/Labels.h Helpers/Labels.cpp
@@ -77,6 +80,7 @@ add_executable(discord_bot
   Playback/SongPlayer.h Playback/SongPlayer.cpp
   Playback/VoiceDrainWatchdog.h Playback/VoiceDrainWatchdog.cpp
   Playback/FailureStreak.h Playback/FailureStreak.cpp
+  Playback/QueueEdit.h Playback/QueueEdit.cpp
   Playback/Song.h
   Playback/ChunkedSource.h Playback/ChunkedSource.cpp
   Playback/PcmBuffer.h Playback/PcmBuffer.cpp

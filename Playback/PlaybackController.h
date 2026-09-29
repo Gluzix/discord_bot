@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FailureStreak.h"
+#include "QueueEdit.h"
 #include "Song.h"
 
 #include <atomic>
@@ -10,6 +11,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -46,7 +48,7 @@ struct PlaylistEntry; // IMediaResolver.h
 //   known-good.
 // - Whenever a song ends with nothing left to play, the idle clock starts and
 //   the failure streak ends: with the clock at 0 the idle timer never leaves
-//   the channel (playbackWorker(), skip(), stop()).
+//   the channel (playbackWorker(), skip(), stop(), remove()).
 // - A song's panel is retired in playbackWorker() unless makeReplay() handed
 //   it to a song-loop replay; a replay that stop() drops before it played
 //   keeps the row.
@@ -109,6 +111,19 @@ public:
     // Stops the current song and clears the whole queue. Safe to call when
     // nothing is playing. The worker thread stays alive for the next /play.
     void stop();
+
+    // Shuffles the waiting songs and returns how many took part; fewer than
+    // two means nothing changed.
+    size_t shuffle();
+
+    struct RemoveResult
+    {
+        queueedit::RemoveOutcome outcome{queueedit::RemoveOutcome::NoSuchPosition};
+        std::string label; // rendered markdown of the song taken out
+    };
+
+    // Takes the waiting song at position (from 1, as /queue numbers them) out.
+    RemoveResult remove(size_t position);
 
     enum class PauseResult {
         Done,
@@ -211,6 +226,7 @@ private:
     std::function<void(uint64_t, uint64_t)> voiceLostHandler;
     VoiceClientLookup voiceClientLookup;
     uint64_t nextSongId{1};
+    std::mt19937 shuffleRng{std::random_device{}()};
     std::atomic<bool> running{true};
     std::thread workerThread;
 
