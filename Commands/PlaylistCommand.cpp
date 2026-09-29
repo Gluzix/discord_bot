@@ -50,7 +50,7 @@ void PlaylistCommand::execute(const dpp::slashcommand_t &event)
     const size_t MAX_ENTRIES = 100;
     PlaylistListing listing = resolver->listPlaylist(link, MAX_ENTRIES);
     if (listing.entries.empty()) {
-        event.edit_original_response(dpp::message(messages::playlistEmpty));
+        event.edit_original_response(dpp::message(listing.timedOut ? messages::playlistTimedOut : messages::playlistEmpty));
         return;
     }
 
@@ -62,7 +62,7 @@ void PlaylistCommand::execute(const dpp::slashcommand_t &event)
     std::string text = messages::playlistQueuedPrefix + std::to_string(queued)
         + (queued == 1 ? messages::playlistQueuedOne : messages::playlistQueuedMany)
         + "[" + name + "](<" + link + ">)";
-    if (listing.totalCount > queued) {
+    if (listing.totalCount > MAX_ENTRIES) {
         text += messages::playlistTruncatedPrefix + std::to_string(listing.totalCount) + messages::playlistTruncatedSuffix;
     }
     dpp::message summary(text);

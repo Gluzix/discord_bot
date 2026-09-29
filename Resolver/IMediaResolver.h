@@ -22,6 +22,7 @@ struct PlaylistListing
     std::string title;                  // the playlist's own name (empty if unknown)
     std::vector<PlaylistEntry> entries; // playable videos in playlist order; empty on failure
     size_t totalCount{0};               // how many videos the playlist has in all (0 = unknown)
+    bool timedOut{false};               // ran out of time; entries is empty then
 };
 
 // Turns what a user asked for into something that can be played.
@@ -49,5 +50,6 @@ public:
 
     // Lists the first maxEntries videos of a YouTube playlist without
     // resolving any of them. Private and deleted videos are left out.
+    // A listing that timed out comes back empty, with timedOut set.
     virtual PlaylistListing listPlaylist(const std::string &playlistUrl, size_t maxEntries) = 0;
 };

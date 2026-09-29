@@ -21,6 +21,7 @@ inline constexpr const char* usePlaylistCommand = "That's a playlist - use /play
 inline constexpr const char* invalidPlaylistInput    = "Give me a YouTube playlist link (one with list= in it)!";
 inline constexpr const char* readingPlaylist         = "Reading the playlist...";
 inline constexpr const char* playlistEmpty           = "Couldn't find any playable videos in that playlist :(";
+inline constexpr const char* playlistTimedOut        = "Reading the playlist took too long - try again in a moment!";
 inline constexpr const char* playlistQueuedPrefix    = "Queued ";
 inline constexpr const char* playlistQueuedOne       = " song from ";
 inline constexpr const char* playlistQueuedMany      = " songs from ";
