@@ -10,7 +10,7 @@ Built on [D++ (DPP)](https://dpp.dev) for Discord, FFmpeg for decoding, [yt-dlp]
 | --- | --- |
 | `/play song:<link or title>` | Plays a YouTube link, or searches YouTube for a title and plays the first hit. Queues it if something is already playing. |
 | `/playlist link:<playlist link>` | Queues every video of a YouTube playlist (the first 100). |
-| `/queue` | Shows what's playing and what's waiting. |
+| `/queue` | Shows what's playing and the first 15 waiting songs, fewer when their titles are long. |
 | `/shuffle` | Puts the waiting songs in a random order; the current song plays on. |
 | `/remove position:<n>` | Takes the song numbered `n` in `/queue` out of the queue. |
 | `/nowplaying` | Shows the current song and how far into it playback is, with the "Playing:" buttons under it. A click on them brings the song and position up to date. |
@@ -47,7 +47,7 @@ slash command ──► Commands/*Command ──► PlaybackController
                       decoder thread: PcmResampler (FFmpeg) ──► PcmBuffer ──► sender thread ──► DPP ──► Discord
 ```
 
-- `Commands/` holds one small class per slash command. `CommandHandler` wires them up, registers them with Discord, and starts the leave timer.
+- `Commands/` holds one small class per slash command. `CommandHandler` wires them up, registers them with Discord, and starts the leave timer. `QueueText` writes the `/queue` answer, with as many waiting songs as fit in one message.
 - `ButtonRouter` takes a click on a "Playing:" button to the command behind it, and `PlaybackButtons` builds that row and reads its ids. Those commands reply through `Interactions`, which puts a click's answer on the clicked message itself and shows a refusal to the clicker alone. `NowPlayingLine` writes the first line of a `/nowplaying` reply, and a click there writes it anew. `PlayingPanel` takes the buttons off a "Playing:" message once its song is over.
 - `PlaybackController` owns the queue and the worker thread, which hands songs to `SongPlayer` one after another; `ResolverWorker` runs yt-dlp ahead of time on its own thread so the next song starts without a pause.
 - `SongPlayer` commands one song. `DecoderWorker` resolves, announces and decodes it on one thread, `SenderWorker` paces the packets into the voice client on another, and `PcmBuffer` sits between them: the bounded PCM queue plus the seek handshake.
@@ -99,7 +99,7 @@ The bot logs to the console and to `logs/discord_bot-<date>-<time>.log` in the d
 
 Pull requests are reviewed automatically by a Claude workflow in `.github/workflows/claude-review.yml`; it comments on the whole diff when a PR is opened, then on just the new commits after every push to it. Feature work happens on branches and lands through PRs.
 
-The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies, the `/nowplaying` line, the Windows command line quoting, the yt-dlp resolver and the queue edits behind `/shuffle` and `/remove`. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
+The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies, the `/nowplaying` line, the `/queue` text, the Windows command line quoting, the yt-dlp resolver and the queue edits behind `/shuffle` and `/remove`. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
 
 The codebase carries a few hard-won rules that are easy to break by accident:
 

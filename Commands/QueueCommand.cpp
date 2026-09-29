@@ -1,4 +1,5 @@
 #include "QueueCommand.h"
+#include "QueueText.h"
 #include "PlaybackController.h"
 #include "Messages.h"
 
@@ -19,27 +20,8 @@ void QueueCommand::execute(const dpp::slashcommand_t &event)
         return;
     }
 
-    std::string text;
-    if (!snapshot.current.empty()) {
-        text += messages::queueNowPlayingPrefix + ("**" + snapshot.current + "**");
-        if (snapshot.loop == PlaybackController::LoopMode::Song) {
-            text += messages::queueLoopSongSuffix;
-        } else if (snapshot.loop == PlaybackController::LoopMode::Queue) {
-            text += messages::queueLoopQueueSuffix;
-        }
-        text += "\n";
-    }
-
-    const size_t MAX_LISTED = 15; // stay far below Discord's 2000 char limit
-    for (size_t i = 0; i < snapshot.queued.size() && i < MAX_LISTED; ++i) {
-        text += std::to_string(i + 1) + ". " + snapshot.queued[i] + "\n";
-    }
-    if (snapshot.queued.size() > MAX_LISTED) {
-        text += messages::queueMorePrefix + std::to_string(snapshot.queued.size() - MAX_LISTED) + messages::queueMoreSuffix + "\n";
-    }
-
     // Titles and urls are untrusted input - never let them ping anyone.
-    dpp::message reply(text);
+    dpp::message reply(queuetext::render(snapshot));
     reply.set_allowed_mentions();
     event.reply(reply);
 }
