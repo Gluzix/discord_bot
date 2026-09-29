@@ -28,6 +28,7 @@ public:
         // run() killed it, a crash or a failed start.
         int exitCode{1};
         bool cancelled{false};          // killed because the caller lost interest
+        bool timedOut{false};           // killed because the timeout passed
         std::vector<std::string> lines; // stdout split into non-empty lines
     };
 

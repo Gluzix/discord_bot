@@ -146,6 +146,7 @@ IProcessRunner::Output WindowsProcessRunner::run(const std::string &program, con
         result.cancelled = cancelled && cancelled();
         if (result.cancelled || std::chrono::steady_clock::now() >= deadline) {
             if (!result.cancelled) {
+                result.timedOut = true;
                 qDebug().noquote() << name << "killed after" << timeout.count() << "s:"
                                    << QString::fromStdString(commandLine).right(60);
             }

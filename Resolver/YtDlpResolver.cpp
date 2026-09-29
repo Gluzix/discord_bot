@@ -108,10 +108,14 @@ PlaylistListing YtDlpResolver::listPlaylist(const std::string &playlistUrl, size
     if (run.exitCode != 0) {
         qDebug() << "yt-dlp playlist listing exit code:" << run.exitCode;
     }
+    PlaylistListing listing;
+    if (run.timedOut) {
+        listing.timedOut = true;
+        return listing;
+    }
 
     const std::string titleMarker = "PLAYLIST_TITLE=";
     const std::string countMarker = "PLAYLIST_COUNT=";
-    PlaylistListing listing;
     std::string pendingUrl;
     for (const std::string &line : run.lines) {
         if (line.rfind(titleMarker, 0) == 0) {

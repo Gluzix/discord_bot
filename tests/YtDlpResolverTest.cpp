@@ -229,5 +229,30 @@ int main()
               "ended mid-entry: the whole entries stay, the last url goes");
     }
 
+    { // a playlist that timed out
+        auto runner = std::make_shared<ScriptedRunner>();
+        Output killed = ended(1, {
+            "https://www.youtube.com/watch?v=a", "Song A",
+            "PLAYLIST_TITLE=Mix", "PLAYLIST_COUNT=250"});
+        killed.timedOut = true;
+        runner->script = {killed};
+        const PlaylistListing listing = YtDlpResolver(runner, YT_DLP).listPlaylist(PLAYLIST, 100);
+        check(listing.timedOut, "timed out: said so");
+        check(listing.entries.empty() && listing.title.empty() && listing.totalCount == 0,
+              "timed out: nothing of what had arrived is kept");
+    }
+
+    { // a playlist that ended with an error
+        auto runner = std::make_shared<ScriptedRunner>();
+        runner->script = {ended(1, {
+            "https://www.youtube.com/watch?v=a", "Song A",
+            "PLAYLIST_TITLE=Mix", "PLAYLIST_COUNT=250"})};
+        const PlaylistListing listing = YtDlpResolver(runner, YT_DLP).listPlaylist(PLAYLIST, 100);
+        check(!listing.timedOut, "ended with an error: no timeout");
+        check(listing.entries.size() == 1 && is(listing.entries[0], "https://www.youtube.com/watch?v=a", "Song A")
+                  && listing.title == "Mix" && listing.totalCount == 250,
+              "ended with an error: the entry, title and count are read");
+    }
+
     return summary();
 }

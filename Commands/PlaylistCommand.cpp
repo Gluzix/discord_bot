@@ -50,7 +50,7 @@ void PlaylistCommand::execute(const dpp::slashcommand_t &event)
     const size_t MAX_ENTRIES = 100;
     PlaylistListing listing = resolver->listPlaylist(link, MAX_ENTRIES);
     if (listing.entries.empty()) {
-        event.edit_original_response(dpp::message(messages::playlistEmpty));
+        event.edit_original_response(dpp::message(listing.timedOut ? messages::playlistTimedOut : messages::playlistEmpty));
         return;
     }
 
