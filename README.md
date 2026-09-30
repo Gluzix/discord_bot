@@ -77,11 +77,11 @@ cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystem
 cmake --build build
 ```
 
-The build copies `dpp.dll` and `cacert.pem` next to the executable. The CA bundle matters: DPP verifies TLS certificates through OpenSSL, which has no CA store on Windows by default, so without it every connection fails with "Malformed HTTP response".
+The build copies `dpp.dll` and `cacert.pem` next to the executable. The bot looks for `cacert.pem` there, wherever it is started from, unless `SSL_CERT_FILE` names another CA bundle. The CA bundle matters: DPP verifies TLS certificates through OpenSSL, which has no CA store on Windows by default, so without it every connection fails with "Malformed HTTP response".
 
 ## Configuration
 
-Create a Discord application with a bot user, enable it for your server with the `applications.commands` scope and voice permissions, and put its token in a file named `token.json` in the directory the bot runs from (the build directory when launched from Qt Creator):
+Create a Discord application with a bot user, enable it for your server with the `applications.commands` scope and voice permissions, and put its token in a file named `token.json` in the directory the bot is started from (the build directory when launched from Qt Creator):
 
 ```json
 { "discord_token": "your-bot-token" }
@@ -93,13 +93,13 @@ Slash commands are registered globally on startup, so they appear in every serve
 
 ## Logs
 
-The bot logs to the console and to `logs/discord_bot-<date>-<time>.log` in the directory it runs from, a new file for every start. DPP's websocket trace goes to the file only. A file that reaches 10 MB is closed and a fresh one opened, and the oldest files are deleted once all of them together pass 50 MB.
+The bot logs to the console and to `logs/discord_bot-<date>-<time>.log` in the directory it is started from, a new file for every start. DPP's websocket trace goes to the file only. A file that reaches 10 MB is closed and a fresh one opened, and the oldest files are deleted once all of them together pass 50 MB.
 
 ## Development
 
 Pull requests are reviewed automatically by a Claude workflow in `.github/workflows/claude-review.yml`; it comments on the whole diff when a PR is opened, then on just the new commits after every push to it. Feature work happens on branches and lands through PRs.
 
-The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies, the `/nowplaying` line, the `/queue` text, the Windows command line quoting, the yt-dlp resolver and the queue edits behind `/shuffle` and `/remove`. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
+The tests in `tests/` cover the PCM protocol the decoder and sender share, the failure streak, the voice drain watchdog, the empty-room clock, the time text, the playback buttons, the interaction replies, the `/nowplaying` line, the `/queue` text, the Windows command line quoting, the log files, the yt-dlp resolver and the queue edits behind `/shuffle` and `/remove`. They build with the bot; run them with `ctest --test-dir <build dir> --output-on-failure`, or `ninja test` in the build directory.
 
 The codebase carries a few hard-won rules that are easy to break by accident:
 

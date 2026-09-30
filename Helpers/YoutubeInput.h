@@ -22,4 +22,7 @@ bool isPlaylistUrl(const std::string &url);
 // A playlist page with no video of its own; /play has nothing to play there.
 bool isPlaylistPageUrl(const std::string &url);
 
+// A list YouTube made up (list=RD...), not one a person put together.
+bool isMixUrl(const std::string &url);
+
 }

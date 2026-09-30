@@ -21,13 +21,15 @@ add_bot_test(InteractionsTest InteractionsTest.cpp Check.h ../Helpers/Interactio
 add_bot_test(NowPlayingLineTest NowPlayingLineTest.cpp Check.h ../Commands/NowPlayingLine.cpp ../Helpers/TimeText.cpp)
 add_bot_test(QueueTextTest QueueTextTest.cpp Check.h ../Commands/QueueText.cpp)
 add_bot_test(WindowsCommandLineTest WindowsCommandLineTest.cpp Check.h ../Runner/WindowsCommandLine.cpp)
-add_bot_test(YtDlpResolverTest YtDlpResolverTest.cpp Check.h ../Resolver/YtDlpResolver.cpp)
+add_bot_test(YtDlpResolverTest YtDlpResolverTest.cpp Check.h ../Resolver/YtDlpResolver.cpp ../Helpers/YoutubeInput.cpp)
 add_bot_test(QueueEditTest QueueEditTest.cpp Check.h ../Playback/QueueEdit.cpp)
+add_bot_test(LogTest LogTest.cpp Check.h ../Helpers/Log.cpp)
 
 target_link_libraries(PlaybackButtonsTest PRIVATE dpp)
 target_link_libraries(InteractionsTest PRIVATE dpp Qt${QT_VERSION_MAJOR}::Core)
 target_link_libraries(YtDlpResolverTest PRIVATE Qt${QT_VERSION_MAJOR}::Core)
 target_link_libraries(QueueEditTest PRIVATE dpp)
+target_link_libraries(LogTest PRIVATE dpp Qt${QT_VERSION_MAJOR}::Core)
 target_include_directories(NowPlayingLineTest PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
 target_include_directories(QueueTextTest PRIVATE "${CMAKE_SOURCE_DIR}/Commands")
 
@@ -39,3 +41,4 @@ set_tests_properties(PlaybackButtonsTest PROPERTIES ENVIRONMENT_MODIFICATION "${
 set_tests_properties(InteractionsTest PROPERTIES ENVIRONMENT_MODIFICATION "${DPP_PATH};${QT_PATH}")
 set_tests_properties(YtDlpResolverTest PROPERTIES ENVIRONMENT_MODIFICATION "${QT_PATH}")
 set_tests_properties(QueueEditTest PROPERTIES ENVIRONMENT_MODIFICATION "${DPP_PATH}")
+set_tests_properties(LogTest PROPERTIES ENVIRONMENT_MODIFICATION "${DPP_PATH};${QT_PATH}")

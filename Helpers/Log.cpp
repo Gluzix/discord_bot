@@ -89,7 +89,7 @@ std::vector<std::filesystem::path> logFilesOldestFirst()
     std::error_code error;
     std::vector<std::filesystem::path> logs;
     for (const auto &entry : std::filesystem::directory_iterator(LOG_DIRECTORY, error)) {
-        const std::string name = entry.path().filename().string();
+        const std::string name = entry.path().filename().u8string();
         if (name.rfind("discord_bot-", 0) == 0 && entry.path().extension() == ".log") {
             logs.push_back(entry.path());
         }
@@ -138,7 +138,7 @@ void openLogFile()
     }
 
     const std::string header = timestamp() + " [" + threadLabel() + "] INFO: Logging to "
-                               + std::filesystem::absolute(path, error).string();
+                               + std::filesystem::absolute(path, error).u8string();
     std::cout << header << std::endl;
     logFile() << header << std::endl;
 

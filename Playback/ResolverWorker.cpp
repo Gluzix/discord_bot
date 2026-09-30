@@ -7,6 +7,7 @@
 #include "IMediaResolver.h"
 #include "Messages.h"
 #include "Song.h"
+#include "Interactions.h"
 #include "Labels.h"
 #include "Log.h"
 
@@ -107,9 +108,13 @@ void ResolverWorker::resolveSongs(const uint64_t songId, const std::string &targ
                 // Playlist entries share one reply, the summary - leave it
                 // be, and a held song's retries stay quiet.
                 if (!song.fromPlaylist && song.failedAttempts == 0) {
-                    label = labels::render(song.title, song.webpageUrl, song.target);
-                    position = i + 1;
-                    requestEvent = std::make_unique<dpp::slashcommand_t>(*song.event);
+                    if (interactions::tokenAlive(*song.event, song.resolvedAtSeconds)) {
+                        label = labels::render(song.title, song.webpageUrl, song.target);
+                        position = i + 1;
+                        requestEvent = std::make_unique<dpp::slashcommand_t>(*song.event);
+                    } else {
+                        qDebug() << "The \"Queued at position\" reply is too old to edit - it stays without the title";
+                    }
                 }
             }
             break;
