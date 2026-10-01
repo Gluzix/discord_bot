@@ -7,9 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
-#include <crtdbg.h>
 #include <cstdint>
-#include <cstdlib>
 #include <ctime>
 #include <exception>
 #include <filesystem>
@@ -99,15 +97,6 @@ static void trace(const std::string &message)
 
 int main()
 {
-    // An assertion or an abort must not wait for a click: ctest has no time limit here.
-    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
-    _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
-    _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
-    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
-    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
-    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
-    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
-
     logging::nameThisThread("main");
 
     // A name outside the code page; without u8path it would be read in the code page.
