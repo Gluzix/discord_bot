@@ -3,7 +3,8 @@ set(CMAKE_AUTOUIC OFF)
 set(CMAKE_AUTORCC OFF)
 
 function(add_bot_test name)
-    add_executable(${name} ${ARGN})
+    # QuietFailures.cpp first: MSVC constructs a test's static objects in link order.
+    add_executable(${name} QuietFailures.cpp ${ARGN})
     target_include_directories(${name} PRIVATE "${CMAKE_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/Helpers" "${CMAKE_SOURCE_DIR}/Playback"
         "${CMAKE_SOURCE_DIR}/Runner" "${CMAKE_SOURCE_DIR}/Resolver")
     # The bot gets /utf-8 from Qt; dpp's unicode_emoji.h needs it.
